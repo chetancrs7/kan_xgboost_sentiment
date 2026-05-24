@@ -1,0 +1,29 @@
+model_name: bilstm_cnn
+
+dataset:
+  name: sentiment140
+  path: data/raw/sentiment140.csv
+
+preprocessing:
+  vocab_size: 20000
+  max_length: 200
+  padding: post
+  truncating: post
+  lowercase: true
+
+training:
+  batch_size: 64
+  epochs: 15
+  learning_rate: 0.001
+  validation_split: 0.15
+
+model:
+  embedding_dim: 128
+  lstm_units: 128
+  filters: 128
+  kernel_size: 3
+  dense_units: 64
+  dropout_rate: 0.5
+
+# output:
+#   save_dir: saved_models/bilstm_cnn
