@@ -1,8 +1,9 @@
 model_name: bilstm_cnn
 
+// TODO: Add dataset to as a command line argument
 dataset:
   name: sentiment140
-  path: data/raw/sentiment140.csv
+  path: data/raw/sentiment140_dataset.csv
 
 preprocessing:
   vocab_size: 20000
