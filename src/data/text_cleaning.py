@@ -10,7 +10,6 @@ import pandas as pd
 from emot.emo_unicode import EMOTICONS_EMO
 from urlextract import URLExtract
 
-
 RAW_COLUMNS = ["target", "tweet_id", "date", "query", "user", "text"]
 LABEL_MAP = {0: 0, 4: 1}
 
@@ -30,34 +29,70 @@ class PreprocessConfig:
     random_state: int
 
 
-def extract_emoticons(text: str) -> list[str]:
+def extract_emoticon_meanings(text: str) -> list[str]:
     text = str(text)
-    return [emoticon for emoticon in EMOTICONS_EMO if emoticon in text]
+
+    meanings = []
+
+    for emoticon, meaning in EMOTICONS_EMO.items():
+
+        if emoticon in text:
+
+            clean_meaning = (
+                meaning.replace(":", "").replace(",", "").replace("_", " ").lower()
+            )
+
+            meanings.append(clean_meaning)
+
+    return meanings
 
 
 def extract_hashtags(text: str) -> str:
     return " ".join(match.group(1).lower() for match in HASHTAG_RE.finditer(str(text)))
 
 
-def clean_text(text: str) -> str:
+def clean_text(text: str) -> tuple[str, str]:
+
     text = str(text)
-    text = text.replace("&amp;", " and ").replace("&lt;", " < ").replace("&gt;", " > ")
+
+    text = text.replace("&amp;", " and ")
+    text = text.replace("&lt;", " < ")
+    text = text.replace("&gt;", " > ")
+
     text = text.lower()
+
+    emoticon_meanings = []
 
     for url in url_extractor.find_urls(text):
         text = text.replace(url, " <url> ")
 
     text = MENTION_RE.sub(" <user> ", text)
 
-    for emoticon in extract_emoticons(text):
-        text = text.replace(emoticon, " <emoticon> ")
+    for emoticon, meaning in EMOTICONS_EMO.items():
+
+        if emoticon in text:
+
+            clean_meaning = (
+                meaning.replace(":", "").replace(",", "").replace("_", " ").lower()
+            )
+
+            emoticon_meanings.append(clean_meaning)
+
+            text = text.replace(emoticon, " <emoticon> ")
 
     text = HASHTAG_RE.sub(r" <hashtag> \1 ", text)
+
     text = contractions.fix(text)
+
     text = REPEAT_CHAR_RE.sub(r"\1\1", text)
 
     tokens = TOKEN_RE.findall(text)
-    return " ".join(tokens)
+
+    clean_text_result = " ".join(tokens)
+
+    emoticon_text_result = " ".join(emoticon_meanings)
+
+    return clean_text_result, emoticon_text_result
 
 
 def load_raw_tweets(raw_path: str) -> pd.DataFrame:
@@ -74,12 +109,30 @@ def preprocess_tweets(config: PreprocessConfig) -> pd.DataFrame:
     df["label"] = df["target"].map(LABEL_MAP).astype("int8")
 
     if config.sample_size is not None and config.sample_size < len(df):
-        df = df.sample(n=config.sample_size, random_state=config.random_state).reset_index(drop=True)
+        df = df.sample(
+            n=config.sample_size, random_state=config.random_state
+        ).reset_index(drop=True)
 
-    df["clean_text"] = df["text"].map(clean_text)
+    processed = df["text"].apply(clean_text)
+
+    df["clean_text"] = processed.apply(lambda x: x[0])
+
+    df["emoticon_text"] = processed.apply(lambda x: x[1])
+
     df["hashtag_text"] = df["text"].map(extract_hashtags)
 
-    return df[["tweet_id", "date", "user", "text", "clean_text", "hashtag_text", "label"]]
+    return df[
+        [
+            "tweet_id",
+            "date",
+            "user",
+            "text",
+            "clean_text",
+            "hashtag_text",
+            "emoticon_text",
+            "label",
+        ]
+    ]
 
 
 def save_processed_tweets(df: pd.DataFrame, output_path: str) -> None:
@@ -94,7 +147,9 @@ def run_preprocessing(config: PreprocessConfig) -> None:
 
 
 def parse_args() -> PreprocessConfig:
-    parser = argparse.ArgumentParser(description="Clean raw Sentiment140 tweets and save a processed CSV file.")
+    parser = argparse.ArgumentParser(
+        description="Clean raw Sentiment140 tweets and save a processed CSV file."
+    )
     parser.add_argument("--raw-path", default="data/raw/sentiment140_dataset.csv")
     parser.add_argument("--output-path", default="data/processed/cleaned_tweets.csv")
     parser.add_argument("--sample-size", type=int, default=None)
