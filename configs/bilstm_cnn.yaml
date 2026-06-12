@@ -1,9 +1,17 @@
 model_name: bilstm_cnn
 
-// TODO: Add dataset to as a command line argument
+# TODO: Add dataset to as a command line argument
+random_state: 42
+num_classes: 2
+
 dataset:
   name: sentiment140
   path: data/raw/sentiment140_dataset.csv
+  encoding: latin-1
+  header: false
+  text_column: text
+  label_column: target
+  # sample_size: 100000
 
 preprocessing:
   vocab_size: 20000
@@ -16,7 +24,10 @@ training:
   batch_size: 64
   epochs: 15
   learning_rate: 0.001
+  test_size: 0.2
   validation_split: 0.15
+  early_stopping_patience: 2
+  verbose: 1
 
 model:
   embedding_dim: 128
@@ -26,5 +37,5 @@ model:
   dense_units: 64
   dropout_rate: 0.5
 
-# output:
-#   save_dir: saved_models/bilstm_cnn
+output:
+  save_dir: outputs/bilstm_cnn

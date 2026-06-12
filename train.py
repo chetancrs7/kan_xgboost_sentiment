@@ -1,7 +1,7 @@
 import argparse
 import yaml
 
-# from models.bilstm import BiLSTMTrainer
+from src.baselines.bilstm_cnn.bilstm_cnn import BiLSTMCNNTrainer
 
 def load_config(config_path):
 
@@ -14,8 +14,11 @@ def get_trainer(model_name, config):
 
     trainers = {
         "bilstm_cnn": BiLSTMCNNTrainer,
-        "adaptive_kan": AdaptiveKANTrainer
     }
+
+    if model_name not in trainers:
+        available = ", ".join(sorted(trainers))
+        raise ValueError(f"Unknown model '{model_name}'. Available models: {available}")
 
     return trainers[model_name](config)
 
