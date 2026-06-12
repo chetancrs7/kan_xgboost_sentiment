@@ -10,3 +10,6 @@ scikit-learn
 tensorflow
 PyYAML
 joblib
+contractions
+urlextract
+emot
