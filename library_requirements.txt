@@ -7,6 +7,9 @@ nltk
 openpyxl
 wordcloud
 scikit-learn
+tensorflow
+PyYAML
+joblib
 contractions
 urlextract
 emot
