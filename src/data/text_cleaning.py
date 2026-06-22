@@ -100,7 +100,7 @@ def load_raw_tweets(raw_path: str) -> pd.DataFrame:
         raw_path,
         encoding="latin-1",
         names=RAW_COLUMNS,
-        usecols=["target", "tweet_id", "date", "user", "text"],
+        usecols=["target", "text"],
     )
 
 
@@ -123,9 +123,6 @@ def preprocess_tweets(config: PreprocessConfig) -> pd.DataFrame:
 
     return df[
         [
-            "tweet_id",
-            "date",
-            "user",
             "text",
             "clean_text",
             "hashtag_text",
