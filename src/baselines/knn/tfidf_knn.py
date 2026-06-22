@@ -1,3 +1,4 @@
+# TODO: Remove this file once testing is done for the other files
 """
 TF-IDF + KNN Baseline for Tweet Sentiment Classification
 ========================================================
