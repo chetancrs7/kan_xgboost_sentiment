@@ -1,0 +1,152 @@
+[
+  {
+    "rank": 1,
+    "feature": "pos_verb_ratio",
+    "importance": 0.1095031201839447
+  },
+  {
+    "rank": 2,
+    "feature": "negation_count",
+    "importance": 0.09400473535060883
+  },
+  {
+    "rank": 3,
+    "feature": "negation_ratio",
+    "importance": 0.09124032407999039
+  },
+  {
+    "rank": 4,
+    "feature": "avg_word_length",
+    "importance": 0.0744784027338028
+  },
+  {
+    "rank": 5,
+    "feature": "emoji_count",
+    "importance": 0.07384119182825089
+  },
+  {
+    "rank": 6,
+    "feature": "subjectivity_score",
+    "importance": 0.06827927380800247
+  },
+  {
+    "rank": 7,
+    "feature": "pos_noun_ratio",
+    "importance": 0.06128428131341934
+  },
+  {
+    "rank": 8,
+    "feature": "pos_adv_ratio",
+    "importance": 0.056833431124687195
+  },
+  {
+    "rank": 9,
+    "feature": "char_count",
+    "importance": 0.05356317386031151
+  },
+  {
+    "rank": 10,
+    "feature": "pos_prt_ratio",
+    "importance": 0.04736576974391937
+  },
+  {
+    "rank": 11,
+    "feature": "token_count",
+    "importance": 0.04399292916059494
+  },
+  {
+    "rank": 12,
+    "feature": "pos_adp_ratio",
+    "importance": 0.042847368866205215
+  },
+  {
+    "rank": 13,
+    "feature": "pos_pron_ratio",
+    "importance": 0.04178580269217491
+  },
+  {
+    "rank": 14,
+    "feature": "pos_adj_ratio",
+    "importance": 0.041327789425849915
+  },
+  {
+    "rank": 15,
+    "feature": "pos_det_ratio",
+    "importance": 0.04090546816587448
+  },
+  {
+    "rank": 16,
+    "feature": "punctuation_density",
+    "importance": 0.03674546256661415
+  },
+  {
+    "rank": 17,
+    "feature": "ellipsis_count",
+    "importance": 0.02200150676071644
+  },
+  {
+    "rank": 18,
+    "feature": "intensifier_count",
+    "importance": 0.0
+  },
+  {
+    "rank": 19,
+    "feature": "intensifier_score",
+    "importance": 0.0
+  },
+  {
+    "rank": 20,
+    "feature": "emoji_sentiment",
+    "importance": 0.0
+  },
+  {
+    "rank": 21,
+    "feature": "emoji_density",
+    "importance": 0.0
+  },
+  {
+    "rank": 22,
+    "feature": "sarcasm_score",
+    "importance": 0.0
+  },
+  {
+    "rank": 23,
+    "feature": "exclamation_count",
+    "importance": 0.0
+  },
+  {
+    "rank": 24,
+    "feature": "question_count",
+    "importance": 0.0
+  },
+  {
+    "rank": 25,
+    "feature": "caps_word_count",
+    "importance": 0.0
+  },
+  {
+    "rank": 26,
+    "feature": "caps_ratio",
+    "importance": 0.0
+  },
+  {
+    "rank": 27,
+    "feature": "pos_conj_ratio",
+    "importance": 0.0
+  },
+  {
+    "rank": 28,
+    "feature": "pos_num_ratio",
+    "importance": 0.0
+  },
+  {
+    "rank": 29,
+    "feature": "pos_x_ratio",
+    "importance": 0.0
+  },
+  {
+    "rank": 30,
+    "feature": "pos_punct_ratio",
+    "importance": 0.0
+  }
+]
