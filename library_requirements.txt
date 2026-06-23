@@ -13,3 +13,7 @@ joblib
 contractions
 urlextract
 emot
+torch
+transformers
+sentencepiece
+tqdm
