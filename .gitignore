@@ -2,3 +2,7 @@
 *.xlsx
 __pycache__/
 *.py[cod]
+
+# Generated embedding artifacts
+data/embeddings/
+*.npy
