@@ -10,6 +10,8 @@ import pandas as pd
 from emot.emo_unicode import EMOTICONS_EMO
 from urlextract import URLExtract
 
+from feature_extraction import add_all_features
+
 RAW_COLUMNS = ["target", "tweet_id", "date", "query", "user", "text"]
 LABEL_MAP = {0: 0, 4: 1}
 
@@ -27,6 +29,8 @@ class PreprocessConfig:
     output_path: str
     sample_size: int | None
     random_state: int
+    with_features: bool = False
+    use_spacy: bool = True
 
 
 def extract_emoticon_meanings(text: str) -> list[str]:
@@ -113,23 +117,30 @@ def preprocess_tweets(config: PreprocessConfig) -> pd.DataFrame:
             n=config.sample_size, random_state=config.random_state
         ).reset_index(drop=True)
 
+    # --- Feature extraction FIRST: every feature is read from the raw `text`
+    # column, because clean_text() lower-cases and strips punctuation/emoji and
+    # would otherwise destroy the source signal. ---
+    if config.with_features:
+        df = add_all_features(df, text_col="text", use_spacy=config.use_spacy)
+
+    # --- Destructive cleaning second: produces the model text column. ---
     processed = df["text"].apply(clean_text)
 
     df["clean_text"] = processed.apply(lambda x: x[0])
 
-    df["emoticon_text"] = processed.apply(lambda x: x[1])
-
-    df["hashtag_text"] = df["text"].map(extract_hashtags)
-
-    return df[
-        [
-            "text",
-            "clean_text",
-            "hashtag_text",
-            "emoticon_text",
-            "label",
+    if config.with_features:
+        # The feature stage already owns `emoticon_text` (from emoji_features)
+        # and `hashtag_text` (from hashtag_features); don't recompute/collide.
+        base_cols = ["text", "clean_text", "hashtag_text", "emoticon_text", "label"]
+        feature_cols = [
+            c for c in df.columns
+            if c not in base_cols and c != "target"
         ]
-    ]
+        return df[base_cols + feature_cols]
+
+    df["emoticon_text"] = processed.apply(lambda x: x[1])
+    df["hashtag_text"] = df["text"].map(extract_hashtags)
+    return df[["text", "clean_text", "hashtag_text", "emoticon_text", "label"]]
 
 
 def save_processed_tweets(df: pd.DataFrame, output_path: str) -> None:
@@ -151,6 +162,10 @@ def parse_args() -> PreprocessConfig:
     parser.add_argument("--output-path", default="data/processed/cleaned_tweets.csv")
     parser.add_argument("--sample-size", type=int, default=None)
     parser.add_argument("--random-state", type=int, default=22)
+    parser.add_argument("--with-features", action="store_true",
+                        help="Extract the 10 sentiment-feature categories into columns.")
+    parser.add_argument("--no-spacy", dest="use_spacy", action="store_false",
+                        help="Skip spaCy; use NLTK for POS and zero-fill dependency feats.")
     args = parser.parse_args()
     return PreprocessConfig(**vars(args))
 
