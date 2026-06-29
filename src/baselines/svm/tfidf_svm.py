@@ -1,3 +1,5 @@
+# TODO: Delete later as files have already been brokken up into smaller modules. This file is kept for reference only.
+
 """
 TF-IDF + SVM Baseline for Tweet Sentiment Classification
 =========================================================
