@@ -10,7 +10,7 @@ import pandas as pd
 from emot.emo_unicode import EMOTICONS_EMO
 from urlextract import URLExtract
 
-from feature_extraction import add_all_features
+from feature_extraction import EMOTICON_RE, add_all_features
 
 RAW_COLUMNS = ["target", "tweet_id", "date", "query", "user", "text"]
 LABEL_MAP = {0: 0, 4: 1}
@@ -33,24 +33,6 @@ class PreprocessConfig:
     use_spacy: bool = True
 
 
-def extract_emoticon_meanings(text: str) -> list[str]:
-    text = str(text)
-
-    meanings = []
-
-    for emoticon, meaning in EMOTICONS_EMO.items():
-
-        if emoticon in text:
-
-            clean_meaning = (
-                meaning.replace(":", "").replace(",", "").replace("_", " ").lower()
-            )
-
-            meanings.append(clean_meaning)
-
-    return meanings
-
-
 def extract_hashtags(text: str) -> str:
     return " ".join(match.group(1).lower() for match in HASHTAG_RE.finditer(str(text)))
 
@@ -63,27 +45,24 @@ def clean_text(text: str) -> tuple[str, str]:
     text = text.replace("&lt;", " < ")
     text = text.replace("&gt;", " > ")
 
-    text = text.lower()
-
-    emoticon_meanings = []
-
+    # URLs first: a URL contains emoticon-like substrings (e.g. "://" holds
+    # ":/"), so strip them before emoticon detection runs.
     for url in url_extractor.find_urls(text):
         text = text.replace(url, " <url> ")
 
+    # Emoticons MUST be detected on the original-case text: most are
+    # case-sensitive (":D", ":P", "XD", "D:") and would never match a
+    # lower-cased string. EMOTICON_RE is longest-first, so ":))" wins over
+    # ":)"; dict.fromkeys dedups the meanings while preserving order.
+    emoticon_meanings = [
+        EMOTICONS_EMO[e].replace(":", "").replace(",", "").replace("_", " ").lower()
+        for e in dict.fromkeys(EMOTICON_RE.findall(text))
+    ]
+    text = EMOTICON_RE.sub(" <emoticon> ", text)
+
+    text = text.lower()
+
     text = MENTION_RE.sub(" <user> ", text)
-
-    for emoticon, meaning in EMOTICONS_EMO.items():
-
-        if emoticon in text:
-
-            clean_meaning = (
-                meaning.replace(":", "").replace(",", "").replace("_", " ").lower()
-            )
-
-            emoticon_meanings.append(clean_meaning)
-
-            text = text.replace(emoticon, " <emoticon> ")
-
     text = HASHTAG_RE.sub(r" <hashtag> \1 ", text)
 
     text = contractions.fix(text)
@@ -93,7 +72,6 @@ def clean_text(text: str) -> tuple[str, str]:
     tokens = TOKEN_RE.findall(text)
 
     clean_text_result = " ".join(tokens)
-
     emoticon_text_result = " ".join(emoticon_meanings)
 
     return clean_text_result, emoticon_text_result
@@ -129,7 +107,7 @@ def preprocess_tweets(config: PreprocessConfig) -> pd.DataFrame:
     df["clean_text"] = processed.apply(lambda x: x[0])
 
     if config.with_features:
-        # The feature stage already owns `emoticon_text` (from emoji_features)
+        # The feature stage already owns `emoticon_text` (from emoticon_features)
         # and `hashtag_text` (from hashtag_features); don't recompute/collide.
         base_cols = ["text", "clean_text", "hashtag_text", "emoticon_text", "label"]
         feature_cols = [
