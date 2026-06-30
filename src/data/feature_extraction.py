@@ -25,7 +25,6 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 
-import emoji as emoji_lib
 import pandas as pd
 from emot.emo_unicode import EMOTICONS_EMO
 from nltk.sentiment.vader import VaderConstants
@@ -66,6 +65,9 @@ POS_KEYS = ("ADJ", "ADV", "VERB", "NOUN", "PRON", "INTJ")
 
 WORD_RE = re.compile(r"[a-z']+")
 HASHTAG_RE = re.compile(r"#(\w+)")
+# Strip URLs before emoticon detection: "://" in a link holds ":/", which emot
+# would otherwise count as a skeptical emoticon.
+URL_RE = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
 EXCLAIM_RE = re.compile(r"!")
 QUESTION_RE = re.compile(r"\?")
 ELLIPSIS_RE = re.compile(r"\.{2,}|…")
@@ -106,38 +108,28 @@ def intensifier_features(text: str) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# 3. Emoji (unicode emoji + text emoticons)  -- MUST run before clean_text
+# 3. Emoticons (text emoticons via emot)  -- MUST run before clean_text
 # --------------------------------------------------------------------------- #
 
-# Tiny polarity map for the most frequent sentiment-bearing emoji. Extend with
-# the Emoji Sentiment Ranking (Kralj Novak et al., 2015) for full coverage.
+# Sentiment140 is a latin-1 2009 corpus: it carries text emoticons (":)", ":D")
+# but essentially no unicode emoji, so dedicated emoji columns are omitted.
+# These polarity sets stay because sarcasm_features uses them for the
+# emoji/word incongruity cue, which activates on modern emoji-bearing data.
 _EMOJI_POS = set("😀😁😂🤣😃😄😆😊😍🥰😘👍❤️💕🔥✨🎉😎🙌👏💯😻🤗🥳")
 _EMOJI_NEG = set("😞😔😢😭😡🤬👎💔😠😤😨😩😱🙄😒😣😖😫💀🤮😷")
 
 
-def emoji_features(text: str) -> dict:
-    text = str(text)
-    emoji_chars = [d["emoji"] for d in emoji_lib.emoji_list(text)]
-    pos = sum(1 for e in emoji_chars if e in _EMOJI_POS)
-    neg = sum(1 for e in emoji_chars if e in _EMOJI_NEG)
-
-    # text emoticons via emot's table
+def emoticon_features(text: str) -> dict:
+    # Drop URLs first so ":/" inside "http://..." isn't counted as an emoticon.
+    text = URL_RE.sub(" ", str(text))
+    # text emoticons via emot's table; longest-first EMOTICON_RE avoids partial
+    # matches (":)" inside ":))"). dict.fromkeys dedups, preserving order.
     emoticons = EMOTICON_RE.findall(text)
     emoticon_meanings = " ".join(
         EMOTICONS_EMO[e].replace(":", "").replace(",", "").replace("_", " ").lower()
         for e in dict.fromkeys(emoticons) if e in EMOTICONS_EMO
     )
-
-    # demojized names give the text branch / inspection a readable signal
-    demojized = " ".join(
-        emoji_lib.demojize(e).strip(":").replace("_", " ") for e in emoji_chars
-    )
     return {
-        "emoji_count": len(emoji_chars),
-        "emoji_pos_count": pos,
-        "emoji_neg_count": neg,
-        "emoji_net": pos - neg,
-        "emoji_text": demojized,
         "emoticon_count": len(emoticons),
         "emoticon_text": emoticon_meanings,
     }
@@ -280,7 +272,7 @@ def hashtag_features(text: str) -> dict:
 LEXICAL_EXTRACTORS = (
     negation_features,
     intensifier_features,
-    emoji_features,
+    emoticon_features,
     punctuation_features,
     capitalization_features,
     sarcasm_features,

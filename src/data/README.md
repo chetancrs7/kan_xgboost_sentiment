@@ -101,7 +101,6 @@ no manual upkeep.
 | `clean_text` | normalized text for the model |
 | `hashtag_text` | hashtag words, camel-split (`#FollowFriday` → `follow friday`) |
 | `emoticon_text` | meanings of text emoticons (`:)` → `happy face or smiley`) |
-| `emoji_text` | demojized unicode emoji names (`😡` → `enraged face`) |
 | `label` | 0 = negative, 1 = positive |
 
 **Feature columns**
@@ -110,7 +109,7 @@ no manual upkeep.
 |---|---|
 | Negation | `neg_count`, `neg_ratio` |
 | Intensifier | `intensifier_count`, `intensifier_ratio`, `elongated_word_count` |
-| Emoji | `emoji_count`, `emoji_pos_count`, `emoji_neg_count`, `emoji_net`, `emoticon_count` |
+| Emoticon | `emoticon_count` |
 | Sarcasm | `sarcasm_cue_count`, `sarcasm_flag` |
 | Subjectivity | `subjectivity` |
 | POS stats | `pos_adj_ratio`, `pos_adv_ratio`, `pos_verb_ratio`, `pos_noun_ratio`, `pos_pron_ratio`, `pos_intj_ratio` |
@@ -141,7 +140,8 @@ fe.add_all_features(df, "text")       # everything
 The spaCy POS/dependency work runs in a single batched `nlp.pipe` pass, so it
 scales to the full 1.6M-row dataset; lexical features are pure-Python and fast.
 
-> **Sentiment140 note:** this 2009 corpus has text emoticons but essentially no
-> unicode emoji or hashtags, so `emoji_count` and `hashtag_sentiment` are
-> near-zero here. Those features are built and tested, and activate on modern
+> **Sentiment140 note:** this latin-1 2009 corpus has text emoticons (`:)`,
+> `:D`) but essentially no unicode emoji, so dedicated emoji columns are
+> intentionally omitted. Hashtags are also rare here, so `hashtag_sentiment` is
+> near-zero. The hashtag features are built and tested, and activate on modern
 > tweet data.
