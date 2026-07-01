@@ -1,3 +1,4 @@
+# TODO: Remove this file once testing is done for the split model/train/evaluate files
 """BiLSTM-CNN baseline for sentiment classification.
 
 The model combines a bidirectional LSTM for contextual sequence encoding with a

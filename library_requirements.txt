@@ -15,6 +15,12 @@ joblib
 contractions
 urlextract
 emot
+emoji
+# Optional (richer feature extraction):
+#   textblob  -> real subjectivity score (else lexicon-ratio fallback)
+#   spacy + en_core_web_sm  -> dependency features + better POS (else NLTK)
+# textblob
+# spacy
 torch
 transformers
 sentencepiece
