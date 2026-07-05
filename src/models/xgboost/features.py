@@ -16,6 +16,10 @@ Feature groups
 * Capitalisation  - ALL-CAPS word frequency and ratio.
 * POS distribution- proportion of each universal part-of-speech category.
 * Subjectivity    - opinion-heavy vs. factual language ratio.
+* Lexicon polarity- VADER sentence scores (compound/pos/neg/neu) and
+                    token-level lexicon hit ratios; the only feature group
+                    that sees *which* words are used, giving the model
+                    lexical sentiment signal the structural cues lack.
 
 All features are stateless lexicon/heuristic computations; ``fit`` only records
 the (constant) feature schema so the transformer integrates cleanly into
@@ -37,6 +41,13 @@ try:  # NLTK is a hard dependency, but degrade gracefully if data is missing.
     _NLTK_AVAILABLE = True
 except Exception:  # pragma: no cover - exercised only without NLTK installed
     _NLTK_AVAILABLE = False
+
+try:  # VADER ships with NLTK; requires the ``vader_lexicon`` data package.
+    from nltk.sentiment import SentimentIntensityAnalyzer
+
+    _VADER_AVAILABLE = True
+except Exception:  # pragma: no cover - exercised only without NLTK installed
+    _VADER_AVAILABLE = False
 
 try:
     import emot
@@ -170,15 +181,42 @@ class FeatureExtractor:
         >>> X_val = fx.transform(val_texts)        # identical column order
     """
 
-    def __init__(self, use_emot: bool = True) -> None:
+    def __init__(self, use_emot: bool = True, use_vader: bool = True) -> None:
         """Args:
         use_emot: Use the ``emot`` library for emoji/emoticon detection when
             available. Falls back to internal regex scanning otherwise.
+        use_vader: Compute VADER lexicon-polarity features when the
+            ``vader_lexicon`` NLTK data is available. When unavailable the
+            lexicon columns are zero-filled so the schema stays stable.
         """
         self.use_emot = use_emot and _EMOT is not None
+        self.use_vader = use_vader
+        self._vader = self._build_vader() if use_vader else None
         self.feature_names_: list[str] = self._build_feature_names()
         self.n_features_: int = len(self.feature_names_)
         self._fitted = False
+
+    @staticmethod
+    def _build_vader() -> "SentimentIntensityAnalyzer | None":
+        """Instantiate VADER, or ``None`` when its lexicon data is missing."""
+        if not _VADER_AVAILABLE:
+            return None
+        try:
+            return SentimentIntensityAnalyzer()
+        except Exception:
+            return None
+
+    # ------------------------------------------------------- (de)serialisation
+    def __getstate__(self) -> dict:
+        """Drop the VADER analyzer for pickling; it is rebuilt on load."""
+        state = self.__dict__.copy()
+        state["_vader"] = None
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        self.__dict__.update(state)
+        if self.use_vader and self._vader is None:
+            self._vader = self._build_vader()
 
     # ------------------------------------------------------------------ API
     def fit(
@@ -260,6 +298,13 @@ class FeatureExtractor:
             "token_count",
             "avg_word_length",
             "subjectivity_score",
+            "vader_compound",
+            "vader_pos",
+            "vader_neg",
+            "vader_neu",
+            "lexicon_pos_ratio",
+            "lexicon_neg_ratio",
+            "lexicon_net_polarity",
         ]
         names += [f"pos_{cat.lower().strip('.') or 'punct'}_ratio" for cat in POS_CATEGORIES]
         return names
@@ -373,6 +418,25 @@ class FeatureExtractor:
         subj_hits = sum(1 for w in lower_words if w in SUBJECTIVITY_WORDS)
         subjectivity_score = subj_hits / denom_tokens
 
+        # --- Lexicon polarity (VADER) --------------------------------------
+        # Sentence-level scores capture negation/intensity handling; token
+        # ratios separate "neutral" from "mixed positive+negative" texts,
+        # which the compound score alone conflates.
+        vader_compound = vader_pos = vader_neg = vader_neu = 0.0
+        lexicon_pos_ratio = lexicon_neg_ratio = lexicon_net_polarity = 0.0
+        if self._vader is not None:
+            scores = self._vader.polarity_scores(text)
+            vader_compound = scores["compound"]
+            vader_pos = scores["pos"]
+            vader_neg = scores["neg"]
+            vader_neu = scores["neu"]
+            lexicon = self._vader.lexicon
+            valences = [lexicon.get(w, 0.0) for w in lower_words]
+            lexicon_pos_ratio = sum(1 for v in valences if v > 0) / denom_tokens
+            lexicon_neg_ratio = sum(1 for v in valences if v < 0) / denom_tokens
+            # VADER valences live in [-4, 4]; rescale the mean to ~[-1, 1].
+            lexicon_net_polarity = sum(valences) / (4.0 * denom_tokens)
+
         # --- Sarcasm heuristic -------------------------------------------
         sarcasm_score = self._sarcasm_score(
             lowered=lowered,
@@ -404,6 +468,13 @@ class FeatureExtractor:
             float(token_count),
             avg_word_length,
             subjectivity_score,
+            vader_compound,
+            vader_pos,
+            vader_neg,
+            vader_neu,
+            lexicon_pos_ratio,
+            lexicon_neg_ratio,
+            lexicon_net_polarity,
         ]
         vector += [pos_dist[cat] for cat in POS_CATEGORIES]
         return vector
@@ -465,6 +536,7 @@ def ensure_nltk_resources() -> None:
         ("tokenizers/punkt_tab", "punkt_tab"),
         ("taggers/averaged_perceptron_tagger_eng", "averaged_perceptron_tagger_eng"),
         ("taggers/universal_tagset", "universal_tagset"),
+        ("sentiment/vader_lexicon.zip", "vader_lexicon"),
     ]
     for path, package in resources:
         try:
