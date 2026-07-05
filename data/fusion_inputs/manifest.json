@@ -1,0 +1,30 @@
+{
+  "created_utc": "2026-07-04T14:40:31.746291+00:00",
+  "seed": 42,
+  "text_column": "clean_text",
+  "sizes": {
+    "train": {
+      "n": 6000,
+      "class_counts": {
+        "1": 3004,
+        "0": 2996
+      }
+    },
+    "val": {
+      "n": 2000,
+      "class_counts": {
+        "1": 1001,
+        "0": 999
+      }
+    },
+    "test": {
+      "n": 2000,
+      "class_counts": {
+        "1": 1001,
+        "0": 999
+      }
+    }
+  },
+  "source_splits_dir": "C:\\Users\\User\\Documents\\kan_xgboost_sentiment\\data\\splits",
+  "source_xgb_probs_dir": "C:\\Users\\User\\Documents\\kan_xgboost_sentiment\\models\\xgboost"
+}
