@@ -1,10 +1,14 @@
 # Hydra Configuration — KAN + XGBoost Sentiment Pipeline
 
-This directory holds all configuration for the sentiment ensemble:
+This directory holds all configuration for every model in the project. The `model` config group selects what `src/train.py` trains:
 
-- **KAN expert** — a 4-layer adaptive-spline Kolmogorov–Arnold network over precomputed DeBERTa-v3 embeddings.
-- **XGBoost expert** — gradient-boosted trees over engineered linguistic features (VADER polarity, negation scope, elongation, …).
-- **Adaptive fusion gate** — a residual-aware gating network that blends the two experts' probabilities per sample.
+| `model=` | What it is |
+|---|---|
+| `kan_xgboost` *(default)* | The ensemble: KAN expert (adaptive-spline network over DeBERTa embeddings) → XGBoost expert (engineered linguistic features) → adaptive fusion gate |
+| `svm` | TF-IDF + Linear SVM baseline |
+| `knn` | TF-IDF + k-Nearest-Neighbours baseline |
+| `rf` | TF-IDF + Random Forest baseline |
+| `bilstm_cnn` | BiLSTM-CNN deep-learning baseline (TensorFlow, reads the raw Sentiment140 CSV) |
 
 Every dataset path, hyperparameter, training setting, seed, and output location lives in the YAML files here, and any value can be overridden (or swept) from the command line via [Hydra](https://hydra.cc). The entry point is `src/train.py`.
 
@@ -24,17 +28,21 @@ With plain argparse, every tunable needs its own `--flag`, defaults are buried i
 
 | File | Keys |
 |---|---|
-| `config.yaml` | defaults list, `seed`, `device` (null = auto), `outputs.{kan_dir,xgboost_dir,fusion_dir}` |
-| `data/default.yaml` | `splits.{train,val,test}`, `embeddings_dir`, `fusion.{inputs_dir,kan_dir}` |
+| `config.yaml` | defaults list, `seed`, `device` (null = auto), `outputs.{kan_dir,xgboost_dir,fusion_dir,rf_dir,bilstm_cnn_dir}` |
+| `data/default.yaml` | `splits.{train,val,test}`, `embeddings_dir`, `raw.{path,encoding,header,text_column,label_column,sample_size}`, `fusion.{inputs_dir,kan_dir}` |
 | `model/kan_xgboost.yaml` | `kan.{hidden_dims,grid_size,spline_order,grid_range}` · `xgboost.{use_optuna,n_trials,n_estimators,max_depth,learning_rate,subsample,colsample_bytree,min_child_weight,gamma,reg_alpha,reg_lambda}` · `fusion.{hidden_dim,dropout,residual_bins,kan_weight}` |
-| `train/default.yaml` | `stages` · `kan.{epochs,batch_size,lr,weight_decay,patience,grid_update_freq}` · `fusion.{epochs,batch_size,lr,weight_decay,patience,scheduler_patience,scheduler_factor,min_lr,gate_holdout}` |
+| `model/svm.yaml` | `max_features`, `c_values`, `class_weights`, `scoring` |
+| `model/knn.yaml` | `max_features`, `k_values`, `weights`, `scoring` |
+| `model/rf.yaml` | `max_features` |
+| `model/bilstm_cnn.yaml` | `num_classes`, `preprocessing.{vocab_size,max_length,padding,truncating,lowercase}`, `params.{embedding_dim,lstm_units,filters,kernel_size,dense_units,dropout_rate}` |
+| `train/default.yaml` | `stages` · `kan.{epochs,batch_size,lr,weight_decay,patience,grid_update_freq}` · `fusion.{epochs,batch_size,lr,weight_decay,patience,scheduler_patience,scheduler_factor,min_lr,gate_holdout}` · `bilstm_cnn.{epochs,batch_size,learning_rate,test_size,validation_split,early_stopping_patience,verbose}` |
 
-New config-group variants can be added as extra files, e.g. `conf/data/subsample.yaml`, then selected with `python src/train.py data=subsample`.
+Every `model/*.yaml` carries a `name:` discriminator that `src/train.py` dispatches on. New config-group variants can be added as extra files, e.g. `conf/data/subsample.yaml`, then selected with `python src/train.py data=subsample`.
 
 ## Running the pipeline
 
 ```bash
-# Full pipeline with defaults: KAN -> XGBoost -> fusion
+# Full ensemble pipeline with defaults: KAN -> XGBoost -> fusion
 python src/train.py
 
 # A single stage (bare value, no brackets needed)
@@ -43,6 +51,11 @@ python src/train.py train.stages=xgboost
 # Multiple stages: list syntax, or a comma-separated string in quotes
 python src/train.py train.stages=[kan,fusion]
 python src/train.py "train.stages='kan,fusion'"
+
+# Train a baseline instead of the ensemble
+python src/train.py model=svm
+python src/train.py model=rf model.max_features=30000
+python src/train.py model=bilstm_cnn train.bilstm_cnn.epochs=5 data.raw.sample_size=100000
 
 # Show the composed config without training
 python src/train.py --cfg job
@@ -60,6 +73,25 @@ The resolved config is printed at the start of every run. Hydra also snapshots i
 | `static_fusion` | Evaluates a **fixed** blend `w·P_kan + (1−w)·P_xgb` (no training) | `data.fusion.*` + `model.fusion.kan_weight` | `static_fusion_w<w>.json` |
 
 Note: the fusion stage consumes the prepared subsample in `data/fusion_inputs` and KAN probabilities from `models/kan_subset` (a KAN retrained on the subsample embeddings). Run `scripts/prepare_fusion_inputs.py` first if those are missing.
+
+### Baselines
+
+Selecting a baseline with `model=<name>` replaces the ensemble stages entirely (`train.stages` is ignored). Baseline hyperparameters sit directly under `model.*`, so overrides are short:
+
+```bash
+python src/train.py model=svm model.c_values=[0.5,1.0] model.class_weights=[balanced]
+python src/train.py model=knn model.k_values=[5,9] model.weights=[distance]
+python src/train.py model=rf model.max_features=30000
+python src/train.py model=bilstm_cnn model.params.lstm_units=64 train.bilstm_cnn.epochs=5
+```
+
+| Baseline | Data | Saves |
+|---|---|---|
+| `svm`, `knn` | `data.splits.*` (`clean_text` column) | nothing — prints evaluation |
+| `rf` | `data.splits.*` (`clean_text` column) | pipeline to `outputs.rf_dir` |
+| `bilstm_cnn` | `data.raw` (raw Sentiment140; does its own split; set `data.raw.sample_size` for quick runs) | model + tokenizer to `outputs.bilstm_cnn_dir` |
+
+`svm`, `knn`, and `rf` share the `max_features` key, so one override can span a model sweep: `python src/train.py -m model=svm,knn,rf model.max_features=30000`.
 
 ## CLI overrides
 
@@ -102,6 +134,9 @@ Add `-m` (or `--multirun`) and comma-separated values to run the Cartesian produ
 python src/train.py -m train.stages=[xgboost] \
     model.xgboost.max_depth=3,5,7 model.xgboost.learning_rate=0.01,0.05
 
+# Compare all classic baselines in one command
+python src/train.py -m model=svm,knn,rf
+
 # Sweep the static fusion weight (fast, no training)
 python src/train.py -m train.stages=[static_fusion] model.fusion.kan_weight=0.3,0.5,0.7
 
@@ -125,5 +160,8 @@ The original per-model scripts still work independently of Hydra:
 python src/models/kan/train.py --epochs 300 --hidden-dims 256,128,64
 python src/models/xgboost/train.py --n-trials 100          # always runs Optuna standalone
 python -m src.fusion.trainer --epochs 300 --hidden-dim 64
-python train.py --config configs/bilstm_cnn.yaml           # baselines (non-Hydra)
+python src/baselines/svm/train.py --c-values 0.5,1.0
+python src/baselines/knn/train.py --k-values 3,5,7
+python src/baselines/rf/train.py --max-features 30000
+python train.py --config configs/bilstm_cnn.yaml           # legacy BiLSTM-CNN entry (non-Hydra)
 ```
