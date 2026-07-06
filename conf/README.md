@@ -37,9 +37,12 @@ New config-group variants can be added as extra files, e.g. `conf/data/subsample
 # Full pipeline with defaults: KAN -> XGBoost -> fusion
 python src/train.py
 
-# Only some stages
-python src/train.py train.stages=[xgboost]
+# A single stage (bare value, no brackets needed)
+python src/train.py train.stages=xgboost
+
+# Multiple stages: list syntax, or a comma-separated string in quotes
 python src/train.py train.stages=[kan,fusion]
+python src/train.py "train.stages='kan,fusion'"
 
 # Show the composed config without training
 python src/train.py --cfg job
@@ -69,6 +72,8 @@ python src/train.py data.embeddings_dir=data/fusion_inputs/embeddings outputs.ka
 ```
 
 Relative paths are resolved against the project root (via `hydra.utils.to_absolute_path`), so they work no matter where Hydra puts its run directory.
+
+**Why the quotes for `train.stages='kan,fusion'`?** An unquoted comma (`train.stages=kan,fusion`) is reserved by Hydra's override grammar for multirun sweeps — in single-run mode Hydra rejects it as ambiguous before the application even starts. Quoting turns it into an ordinary string, which `src/train.py` then splits on commas. The quotes must reach Hydra itself, so wrap the whole override in double quotes with single quotes inside (works in PowerShell, bash, and cmd).
 
 ### XGBoost: fixed hyperparameters vs. Optuna
 

@@ -43,6 +43,20 @@ from omegaconf import DictConfig, OmegaConf
 VALID_STAGES = ("kan", "xgboost", "fusion", "static_fusion")
 
 
+def _normalize_stages(raw: object) -> list[str]:
+    """Accept every reasonable way of writing the stages override.
+
+    Supported forms::
+
+        train.stages=[kan,xgboost]        # Hydra list syntax
+        train.stages=xgboost              # bare single stage
+        "train.stages='kan,fusion'"       # comma-separated string (quoted so
+                                          # Hydra doesn't parse it as a sweep)
+    """
+    items = raw.split(",") if isinstance(raw, str) else list(raw)
+    return [str(s).strip().lower() for s in items if str(s).strip()]
+
+
 def run_kan(cfg: DictConfig) -> None:
     """Train the KAN expert with hyperparameters taken from the config."""
     from src.models.kan.train import main as kan_main
@@ -163,7 +177,7 @@ def main(cfg: DictConfig) -> None:
     print("=" * 64)
     print(OmegaConf.to_yaml(cfg))
 
-    stages = [str(s).lower() for s in cfg.train.stages]
+    stages = _normalize_stages(cfg.train.stages)
     unknown = sorted(set(stages) - set(VALID_STAGES))
     if unknown:
         raise ValueError(

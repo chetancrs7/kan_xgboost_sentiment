@@ -3,10 +3,13 @@
 # Which stages to run, in this fixed order: kan -> xgboost -> fusion.
 # "static_fusion" evaluates a fixed kan_weight blend without training the
 # gate (requires model.fusion.kan_weight to be set).
-# Examples:
-#   python src/train.py train.stages=[xgboost]
+# Accepts a list, a bare single value, or a quoted comma-separated string:
+#   python src/train.py train.stages=xgboost
 #   python src/train.py train.stages=[kan,fusion]
-#   python src/train.py train.stages=[static_fusion] model.fusion.kan_weight=0.7
+#   python src/train.py "train.stages='kan,fusion'"
+#   python src/train.py train.stages=static_fusion model.fusion.kan_weight=0.7
+# (An UNQUOTED comma, e.g. train.stages=kan,fusion, is reserved by Hydra
+# for multirun sweeps and is rejected in single-run mode.)
 stages: [kan, xgboost, fusion]
 
 kan:
