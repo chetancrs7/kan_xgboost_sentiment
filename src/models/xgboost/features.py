@@ -20,6 +20,11 @@ Feature groups
                     token-level lexicon hit ratios; the only feature group
                     that sees *which* words are used, giving the model
                     lexical sentiment signal the structural cues lack.
+                    Lookups are elongation-aware ("goooood" resolves to
+                    "good") and complemented by explicit negation-scope
+                    counts ("not good" -> negated positive).
+* Elongation      - stretched-word counts ("sooooo"), a Twitter-specific
+                    emphasis cue invisible to lexicons and POS tags.
 
 All features are stateless lexicon/heuristic computations; ``fit`` only records
 the (constant) feature schema so the transformer integrates cleanly into
@@ -165,6 +170,9 @@ _EMOJI_RANGE_RE = re.compile(
 _EMOTICON_RE = re.compile(
     r"(?:[:;=8xX][\-^]?[\)\]\(\[dDpP/|]|<3|\^\^|[\)\(]:|D:)"
 )
+# A character repeated 3+ times marks a deliberately stretched word.
+_ELONGATED_RE = re.compile(r"(\w)\1{2,}")
+_ANY_REPEAT_RE = re.compile(r"(\w)\1+")
 
 
 class FeatureExtractor:
@@ -305,9 +313,55 @@ class FeatureExtractor:
             "lexicon_pos_ratio",
             "lexicon_neg_ratio",
             "lexicon_net_polarity",
+            "negated_positive_count",
+            "negated_negative_count",
+            "elongated_word_count",
+            "elongated_word_ratio",
         ]
         names += [f"pos_{cat.lower().strip('.') or 'punct'}_ratio" for cat in POS_CATEGORIES]
         return names
+
+    # ------------------------------------------------------------ lexicon utils
+    def _lexicon_valence(self, word: str) -> float:
+        """VADER valence of a lowercase word, resolving elongated spellings.
+
+        Tries the word as written, then with character runs collapsed to two
+        ("goood" -> "good"), then to one ("sooo" -> "soo" -> "so"), so
+        stretched words still hit the lexicon.
+        """
+        lexicon = self._vader.lexicon
+        if word in lexicon:
+            return lexicon[word]
+        if not _ELONGATED_RE.search(word):
+            return 0.0
+        collapsed_two = _ELONGATED_RE.sub(r"\1\1", word)
+        if collapsed_two in lexicon:
+            return lexicon[collapsed_two]
+        collapsed_one = _ANY_REPEAT_RE.sub(r"\1", word)
+        return lexicon.get(collapsed_one, 0.0)
+
+    def _normalize_elongation(self, text: str) -> str:
+        """Rewrite stretched words to their lexicon spelling for VADER.
+
+        Only whitespace tokens containing a 3+ character run are touched, and
+        case is preserved so VADER's ALL-CAPS emphasis handling still fires.
+        Tokens that resolve to nothing in the lexicon keep the two-character
+        collapse, which denoises without inventing words ("ahhhh" -> "ahh").
+        """
+        if not _ELONGATED_RE.search(text):
+            return text
+        lexicon = self._vader.lexicon
+        parts = text.split(" ")
+        for i, part in enumerate(parts):
+            if not _ELONGATED_RE.search(part):
+                continue
+            collapsed_two = _ELONGATED_RE.sub(r"\1\1", part)
+            if collapsed_two.lower() in lexicon:
+                parts[i] = collapsed_two
+                continue
+            collapsed_one = _ANY_REPEAT_RE.sub(r"\1", part)
+            parts[i] = collapsed_one if collapsed_one.lower() in lexicon else collapsed_two
+        return " ".join(parts)
 
     # ----------------------------------------------------------- emoji/emoticon
     def _detect_emojis(self, text: str) -> list[str]:
@@ -424,18 +478,36 @@ class FeatureExtractor:
         # which the compound score alone conflates.
         vader_compound = vader_pos = vader_neg = vader_neu = 0.0
         lexicon_pos_ratio = lexicon_neg_ratio = lexicon_net_polarity = 0.0
+        negated_positive_count = negated_negative_count = 0.0
         if self._vader is not None:
-            scores = self._vader.polarity_scores(text)
+            scores = self._vader.polarity_scores(self._normalize_elongation(text))
             vader_compound = scores["compound"]
             vader_pos = scores["pos"]
             vader_neg = scores["neg"]
             vader_neu = scores["neu"]
-            lexicon = self._vader.lexicon
-            valences = [lexicon.get(w, 0.0) for w in lower_words]
+            valences = [self._lexicon_valence(w) for w in lower_words]
             lexicon_pos_ratio = sum(1 for v in valences if v > 0) / denom_tokens
             lexicon_neg_ratio = sum(1 for v in valences if v < 0) / denom_tokens
             # VADER valences live in [-4, 4]; rescale the mean to ~[-1, 1].
             lexicon_net_polarity = sum(valences) / (4.0 * denom_tokens)
+
+            # Explicit negation-scope counts: a polar word within two tokens
+            # of a negation cue ("not good", "never works"). VADER folds this
+            # into its compound score; the raw counts give the trees a
+            # direct, unsquashed view of the flip.
+            for j, w in enumerate(lower_words):
+                if w.strip("'") in NEGATION_WORDS:
+                    for v in valences[j + 1 : j + 3]:
+                        if v > 0:
+                            negated_positive_count += 1.0
+                        elif v < 0:
+                            negated_negative_count += 1.0
+
+        # --- Elongation ----------------------------------------------------
+        elongated_word_count = float(
+            sum(1 for w in word_tokens if _ELONGATED_RE.search(w))
+        )
+        elongated_word_ratio = elongated_word_count / denom_tokens
 
         # --- Sarcasm heuristic -------------------------------------------
         sarcasm_score = self._sarcasm_score(
@@ -475,6 +547,10 @@ class FeatureExtractor:
             lexicon_pos_ratio,
             lexicon_neg_ratio,
             lexicon_net_polarity,
+            negated_positive_count,
+            negated_negative_count,
+            elongated_word_count,
+            elongated_word_ratio,
         ]
         vector += [pos_dist[cat] for cat in POS_CATEGORIES]
         return vector
