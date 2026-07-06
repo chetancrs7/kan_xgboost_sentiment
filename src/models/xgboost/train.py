@@ -32,25 +32,36 @@ from pathlib import Path
 
 import numpy as np
 
-# Allow running both as a script (`python src/models/xgboost/train.py`) and as a
-# module (`python -m src.models.xgboost.train`).
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# Make the project root importable so this file works as a script
+# (`python src/models/xgboost/train.py`), as a module (`python -m
+# src.models.xgboost.train`), and imported from the Hydra entry point
+# (`src/train.py`). Package-qualified imports avoid clashing with the
+# KAN expert's identically named data_loader/evaluate/model modules.
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 import joblib  # noqa: E402
 
-from data_loader import (  # noqa: E402
+from src.models.xgboost.data_loader import (  # noqa: E402
     DEFAULT_TEST_PATH,
     DEFAULT_TRAIN_PATH,
     DEFAULT_VAL_PATH,
     load_splits,
 )
-from evaluate import (  # noqa: E402
+from src.models.xgboost.evaluate import (  # noqa: E402
     evaluate_split,
     print_classification_report,
     summarize_feature_importance,
 )
-from features import FeatureExtractor, ensure_nltk_resources  # noqa: E402
-from model import RANDOM_STATE, optimize_xgboost, train_final_model  # noqa: E402
+from src.models.xgboost.features import (  # noqa: E402
+    FeatureExtractor,
+    ensure_nltk_resources,
+)
+from src.models.xgboost.model import (  # noqa: E402
+    RANDOM_STATE,
+    _scale_pos_weight,
+    optimize_xgboost,
+    train_final_model,
+)
 
 DEFAULT_OUTPUT_DIR = "models/xgboost"
 DEFAULT_N_TRIALS = 50
@@ -136,15 +147,17 @@ def save_artifacts(
         "\n".join(csv_lines) + "\n", encoding="utf-8"
     )
 
-    # Optuna trial log.
-    trials_df = study.trials_dataframe()
-    trials_df.to_csv(output_dir / "optuna_trials.csv", index=False)
+    # Optuna trial log (absent when the search was skipped).
+    if study is not None:
+        trials_df = study.trials_dataframe()
+        trials_df.to_csv(output_dir / "optuna_trials.csv", index=False)
 
     print(f"\n[INFO] All artifacts saved to: {output_dir.resolve()}")
 
 
-def main() -> None:
-    args = parse_args()
+def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = parse_args()
     set_global_seed(args.seed)
     ensure_nltk_resources()
 
@@ -172,10 +185,23 @@ def main() -> None:
     )
 
     # 3-4. Hyperparameter search + final fit ------------------------------
-    best_params, study = optimize_xgboost(
-        X_train, y_train_arr, X_val, y_val_arr,
-        n_trials=args.n_trials, random_state=args.seed,
-    )
+    # The Hydra entry point (src/train.py) may pass fixed hyperparameters
+    # and disable the Optuna search; standalone CLI runs keep searching.
+    use_optuna = getattr(args, "use_optuna", True)
+    fixed_params = getattr(args, "fixed_params", None)
+    if use_optuna or not fixed_params:
+        best_params, study = optimize_xgboost(
+            X_train, y_train_arr, X_val, y_val_arr,
+            n_trials=args.n_trials, random_state=args.seed,
+        )
+    else:
+        best_params = dict(fixed_params)
+        if n_classes == 2:
+            best_params.setdefault("scale_pos_weight", _scale_pos_weight(y_train_arr))
+        study = None
+        print("[INFO] Optuna disabled; using fixed hyperparameters:")
+        for key, value in best_params.items():
+            print(f"         {key}: {value}")
     model = train_final_model(
         X_train, y_train_arr, X_val, y_val_arr, best_params, random_state=args.seed,
     )
@@ -199,7 +225,7 @@ def main() -> None:
         "model": "XGBoost (engineered linguistic features)",
         "n_classes": n_classes,
         "n_features": extractor.n_features_,
-        "best_val_f1": float(study.best_value),
+        "best_val_f1": float(study.best_value) if study is not None else None,
         "train": train_metrics,
         "validation": val_metrics,
         "test": test_metrics,
