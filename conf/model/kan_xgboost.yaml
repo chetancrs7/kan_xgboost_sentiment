@@ -1,5 +1,8 @@
 # Model hyperparameters for the two experts and the fusion gate.
 # (Architecture itself is unchanged -- these only parameterise it.)
+# This is the default model; baselines are selected with model=svm|knn|rf|bilstm_cnn.
+
+name: kan_xgboost
 
 kan:
   # Widths of the three hidden adaptive-spline layers.

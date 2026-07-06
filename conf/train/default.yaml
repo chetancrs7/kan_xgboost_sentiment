@@ -35,3 +35,14 @@ fusion:
   min_lr: 1.0e-6
   # Fraction of the validation split held out for early stopping.
   gate_holdout: 0.2
+
+# Only used when model=bilstm_cnn (the other baselines tune via the grids
+# in their model configs and have no epoch-based training loop).
+bilstm_cnn:
+  epochs: 15
+  batch_size: 64
+  learning_rate: 1.0e-3
+  test_size: 0.2
+  validation_split: 0.15
+  early_stopping_patience: 2
+  verbose: 1

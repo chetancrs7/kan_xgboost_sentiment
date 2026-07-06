@@ -12,6 +12,17 @@ splits:
 # ({split}_embeddings.npy + {split}_labels.npy).
 embeddings_dir: data/embeddings/deberta_v3_base
 
+# Raw Sentiment140 dump used only by the BiLSTM-CNN baseline (it does its
+# own tokenisation and splitting; every other model uses the split CSVs).
+raw:
+  path: data/raw/sentiment140_dataset.csv
+  encoding: latin-1
+  header: false
+  text_column: text
+  label_column: target
+  # Optional stratified subsample for quicker runs (null = full dataset).
+  sample_size: null
+
 # Row-aligned inputs for the fusion gate, produced by
 # scripts/prepare_fusion_inputs.py (seeded 6k/2k/2k subsample).
 fusion:

@@ -1,0 +1,28 @@
+# BiLSTM-CNN deep-learning baseline (TensorFlow/Keras).
+#
+#   python src/train.py model=bilstm_cnn
+#   python src/train.py model=bilstm_cnn train.bilstm_cnn.epochs=5 data.raw.sample_size=100000
+#
+# Unlike the other models this baseline reads the RAW Sentiment140 CSV
+# (data.raw in conf/data/default.yaml) and does its own tokenisation and
+# train/test split. Training settings live under train.bilstm_cnn.
+
+name: bilstm_cnn
+
+num_classes: 2
+
+preprocessing:
+  vocab_size: 20000
+  max_length: 200
+  padding: post
+  truncating: post
+  lowercase: true
+
+# Architecture hyperparameters.
+params:
+  embedding_dim: 128
+  lstm_units: 128
+  filters: 128
+  kernel_size: 3
+  dense_units: 64
+  dropout_rate: 0.5
