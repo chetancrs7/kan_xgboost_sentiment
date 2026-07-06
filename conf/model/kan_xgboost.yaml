@@ -1,0 +1,44 @@
+# Model hyperparameters for the two experts and the fusion gate.
+# (Architecture itself is unchanged -- these only parameterise it.)
+
+kan:
+  # Widths of the three hidden adaptive-spline layers.
+  hidden_dims: [256, 128, 64]
+  # B-spline grid intervals per activation.
+  grid_size: 5
+  # B-spline polynomial degree.
+  spline_order: 3
+  # Initial spline grid range [min, max] (adapted during training).
+  grid_range: [-2.0, 2.0]
+
+xgboost:
+  # When true, Optuna searches hyperparameters on validation macro F1 and
+  # the fixed values below are IGNORED (original pipeline behaviour).
+  # When false, the values below are used directly -- this is the default
+  # so that CLI overrides / multirun sweeps of these fields take effect.
+  use_optuna: false
+  # Number of Optuna trials (only used when use_optuna=true).
+  n_trials: 50
+  # Fixed hyperparameters (defaults = best Optuna trial found so far).
+  n_estimators: 750
+  max_depth: 7
+  learning_rate: 0.2486
+  subsample: 0.9352
+  colsample_bytree: 0.7256
+  min_child_weight: 3
+  gamma: 0.1026
+  reg_alpha: 6.06e-4
+  reg_lambda: 2.11e-3
+
+fusion:
+  # Gate MLP width and dropout.
+  hidden_dim: 64
+  dropout: 0.2
+  # Residual-histogram bins for the meta-features.
+  residual_bins: 10
+  # Optional FIXED blend weight for a static-fusion evaluation:
+  # fused = kan_weight * P_kan + (1 - kan_weight) * P_xgb.
+  # null (default) = adaptive learned gate only. When set, a static-blend
+  # evaluation is reported in addition to (or, with the static_fusion
+  # stage, instead of) gate training. Does not alter the gate itself.
+  kan_weight: null
