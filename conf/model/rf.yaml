@@ -1,0 +1,13 @@
+# TF-IDF + Random Forest baseline.
+#
+#   python src/train.py model=rf
+#   python src/train.py model=rf model.max_features=30000
+#
+# Tunes its internal n_estimators/max_depth/min_samples_leaf grid on the
+# validation split, refits, reports test metrics, and saves the pipeline
+# to outputs.rf_dir.
+
+name: rf
+
+# Maximum TF-IDF vocabulary size (null = unlimited).
+max_features: 50000

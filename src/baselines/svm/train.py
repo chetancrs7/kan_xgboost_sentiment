@@ -14,8 +14,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from evaluate import evaluate
-from model import (
+# Make the project root importable so this file works both as a script
+# (`python src/baselines/svm/train.py`) and imported from the Hydra entry
+# point (`src/train.py`).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from src.baselines.svm.evaluate import evaluate  # noqa: E402
+from src.baselines.svm.model import (  # noqa: E402
     C_VALUES,
     CLASS_WEIGHTS,
     MAX_FEATURES,
@@ -133,8 +138,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
+def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = parse_args()
 
     train_df, val_df, test_df = load_splits(
         train_path=args.train_path,
@@ -156,8 +162,10 @@ def main() -> None:
             y_val=y_val,
             max_features=args.max_features,
             c_values=parse_c_values(args.c_values),
-            class_weights=CLASS_WEIGHTS,
-            scoring=SCORING,
+            # The Hydra entry point may override these; the standalone CLI
+            # keeps the module defaults.
+            class_weights=getattr(args, "class_weights", CLASS_WEIGHTS),
+            scoring=getattr(args, "scoring", SCORING),
             random_state=args.random_state,
         )
     except ValueError as exc:

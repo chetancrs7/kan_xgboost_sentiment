@@ -397,16 +397,17 @@ class BiLSTMCNNTrainer:
 
     def stratified_sample(self, dataframe: pd.DataFrame, sample_size: int) -> pd.DataFrame:
         sample_size = min(sample_size, len(dataframe))
-        sampled = (
-            dataframe.groupby("label", group_keys=False)
-            .apply(
-                lambda group: group.sample(
-                    n=max(1, round(sample_size * len(group) / len(dataframe))),
-                    random_state=self.random_state,
-                )
+        # Sample each class group explicitly instead of groupby().apply();
+        # pandas 3.0 excludes the grouping column from apply, which would
+        # silently drop 'label' from the result.
+        parts = [
+            group.sample(
+                n=max(1, round(sample_size * len(group) / len(dataframe))),
+                random_state=self.random_state,
             )
-            .sample(frac=1.0, random_state=self.random_state)
-        )
+            for _, group in dataframe.groupby("label")
+        ]
+        sampled = pd.concat(parts).sample(frac=1.0, random_state=self.random_state)
         return sampled.head(sample_size).reset_index(drop=True)
 
     @staticmethod

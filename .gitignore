@@ -6,3 +6,7 @@ __pycache__/
 # Generated embedding artifacts
 data/embeddings/
 *.npy
+
+# Hydra run directories (per-run logs + config snapshots)
+outputs/
+multirun/

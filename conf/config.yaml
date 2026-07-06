@@ -1,0 +1,33 @@
+# Root Hydra config for the KAN + XGBoost + fusion sentiment pipeline.
+#
+# Entry point: python src/train.py
+# The `model` group selects what to train (default: the kan_xgboost
+# ensemble; baselines: model=svm|knn|rf|bilstm_cnn).
+# Override anything from the CLI, e.g.:
+#   python src/train.py model.xgboost.max_depth=3 model.fusion.kan_weight=0.7
+#   python src/train.py model=svm model.max_features=30000
+#   python src/train.py -m model.xgboost.max_depth=3,5,7 model.xgboost.learning_rate=0.01,0.05
+#   python src/train.py -m model=svm,knn,rf
+
+defaults:
+  - data: default
+  - model: kan_xgboost
+  - train: default
+  - _self_
+
+# Global reproducibility seed (Python / NumPy / PyTorch).
+seed: 42
+
+# Torch device: null = auto-detect (cuda if available, else cpu).
+device: null
+
+# Where trained artifacts are written. Paths are relative to the project
+# root and resolved with hydra.utils.to_absolute_path(), so they are not
+# affected by Hydra's per-run working directory.
+outputs:
+  kan_dir: models/kan
+  xgboost_dir: models/xgboost
+  fusion_dir: models/fusion
+  # Baselines that persist artifacts (svm/knn only print evaluation).
+  rf_dir: models/baselines/rf
+  bilstm_cnn_dir: models/baselines/bilstm_cnn

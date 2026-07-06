@@ -236,8 +236,9 @@ def train_gate(
     }
 
 
-def main() -> None:
-    args = parse_args()
+def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = parse_args()
     set_seed(args.seed)
     device = resolve_device(args.device)
     output_dir = Path(args.output_dir)

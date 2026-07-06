@@ -15,9 +15,15 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-from evaluate import evaluate
-from model import (
+# Make the project root importable so this file works both as a script
+# (`python src/baselines/rf/train.py`) and imported from the Hydra entry
+# point (`src/train.py`).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from src.baselines.rf.evaluate import evaluate  # noqa: E402
+from src.baselines.rf.model import (  # noqa: E402
     MAX_FEATURES,
+    RANDOM_STATE,
     set_reproducibility,
     train_final_model,
     tune_model,
@@ -132,9 +138,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
-    set_reproducibility()
+def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = parse_args()
+    set_reproducibility(getattr(args, "seed", RANDOM_STATE))
 
     train_df, val_df, test_df = load_splits(
         train_path=args.train_path,
