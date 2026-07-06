@@ -14,8 +14,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from evaluate import evaluate
-from model import (
+# Make the project root importable so this file works both as a script
+# (`python src/baselines/knn/train.py`) and imported from the Hydra entry
+# point (`src/train.py`).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from src.baselines.knn.evaluate import evaluate  # noqa: E402
+from src.baselines.knn.model import (  # noqa: E402
     K_VALUES,
     MAX_FEATURES,
     SCORING,
@@ -126,8 +131,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
+def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = parse_args()
 
     train_df, val_df, test_df = load_splits(
         train_path=args.train_path,
@@ -149,8 +155,10 @@ def main() -> None:
             y_val=y_val,
             max_features=args.max_features,
             k_values=parse_k_values(args.k_values),
-            weights=WEIGHTS,
-            scoring=SCORING,
+            # The Hydra entry point may override these; the standalone CLI
+            # keeps the module defaults.
+            weights=getattr(args, "weights", WEIGHTS),
+            scoring=getattr(args, "scoring", SCORING),
         )
     except ValueError as exc:
         sys.exit(f"[ERROR] KNN training failed: {exc}")

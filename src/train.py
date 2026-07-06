@@ -1,24 +1,30 @@
-"""Hydra-driven entry point for the KAN + XGBoost + fusion sentiment pipeline.
+"""Hydra-driven entry point for every model in this project.
 
-All dataset paths, hyperparameters, training settings, seeds, and output
-locations live in ``conf/`` (see ``conf/config.yaml`` and the ``data``,
-``model``, ``train`` config groups). This script only wires resolved config
-values into the existing expert pipelines -- the model code itself is
-unchanged.
+The ``model`` config group selects what to train: the default
+``kan_xgboost`` ensemble (KAN -> XGBoost -> fusion stages) or one of the
+baselines (``svm``, ``knn``, ``rf``, ``bilstm_cnn``). All dataset paths,
+hyperparameters, training settings, seeds, and output locations live in
+``conf/``. This script only wires resolved config values into the existing
+pipelines -- the model code itself is unchanged.
 
 Usage::
 
-    # Full pipeline (KAN -> XGBoost -> fusion) with defaults
+    # Full ensemble pipeline (KAN -> XGBoost -> fusion) with defaults
     python src/train.py
 
-    # Run a subset of stages
-    python src/train.py train.stages=[xgboost]
+    # Run a subset of ensemble stages
+    python src/train.py train.stages=xgboost
+
+    # Train a baseline instead
+    python src/train.py model=svm
+    python src/train.py model=rf model.max_features=30000
 
     # CLI overrides
     python src/train.py model.xgboost.max_depth=3 model.fusion.kan_weight=0.7
 
-    # Multirun sweeps
+    # Multirun sweeps (over values, or over whole models)
     python src/train.py -m model.xgboost.max_depth=3,5,7 model.xgboost.learning_rate=0.01,0.05
+    python src/train.py -m model=svm,knn,rf
 
     # Show the composed config without training
     python src/train.py --cfg job
@@ -170,13 +176,87 @@ def run_static_fusion(cfg: DictConfig) -> None:
     print(f"[INFO] Static fusion metrics saved to: {out_path}")
 
 
-@hydra.main(version_base=None, config_path="../conf", config_name="config")
-def main(cfg: DictConfig) -> None:
-    print("=" * 64)
-    print("RESOLVED CONFIGURATION")
-    print("=" * 64)
-    print(OmegaConf.to_yaml(cfg))
+def run_svm(cfg: DictConfig) -> None:
+    """Train and evaluate the TF-IDF + SVM baseline."""
+    from src.baselines.svm.train import main as svm_main
 
+    model_cfg = cfg.model
+    svm_main(argparse.Namespace(
+        train_path=to_absolute_path(cfg.data.splits.train),
+        val_path=to_absolute_path(cfg.data.splits.val),
+        test_path=to_absolute_path(cfg.data.splits.test),
+        max_features=None if model_cfg.max_features is None else int(model_cfg.max_features),
+        # The SVM pipeline parses this as a comma-separated string.
+        c_values=",".join(str(float(c)) for c in model_cfg.c_values),
+        class_weights=tuple(OmegaConf.to_container(model_cfg.class_weights, resolve=True)),
+        scoring=str(model_cfg.scoring),
+        random_state=int(cfg.seed),
+    ))
+
+
+def run_knn(cfg: DictConfig) -> None:
+    """Train and evaluate the TF-IDF + KNN baseline."""
+    from src.baselines.knn.train import main as knn_main
+
+    model_cfg = cfg.model
+    knn_main(argparse.Namespace(
+        train_path=to_absolute_path(cfg.data.splits.train),
+        val_path=to_absolute_path(cfg.data.splits.val),
+        test_path=to_absolute_path(cfg.data.splits.test),
+        max_features=None if model_cfg.max_features is None else int(model_cfg.max_features),
+        # The KNN pipeline parses this as a comma-separated string.
+        k_values=",".join(str(int(k)) for k in model_cfg.k_values),
+        weights=tuple(str(w) for w in model_cfg.weights),
+        scoring=str(model_cfg.scoring),
+    ))
+
+
+def run_rf(cfg: DictConfig) -> None:
+    """Train, evaluate, and save the TF-IDF + Random Forest baseline."""
+    from src.baselines.rf.train import main as rf_main
+
+    model_cfg = cfg.model
+    rf_main(argparse.Namespace(
+        train_path=to_absolute_path(cfg.data.splits.train),
+        val_path=to_absolute_path(cfg.data.splits.val),
+        test_path=to_absolute_path(cfg.data.splits.test),
+        max_features=None if model_cfg.max_features is None else int(model_cfg.max_features),
+        save_dir=to_absolute_path(cfg.outputs.rf_dir),
+        seed=int(cfg.seed),
+    ))
+
+
+def run_bilstm_cnn(cfg: DictConfig) -> None:
+    """Train, evaluate, and save the BiLSTM-CNN baseline."""
+    from src.baselines.bilstm_cnn.bilstm_cnn import BiLSTMCNNTrainer
+
+    dataset = OmegaConf.to_container(cfg.data.raw, resolve=True)
+    dataset["path"] = to_absolute_path(dataset["path"])
+    # Assemble the nested dict the trainer has always consumed (previously
+    # read from configs/bilstm_cnn.yaml).
+    trainer_config = {
+        "model_name": "bilstm_cnn",
+        "random_state": int(cfg.seed),
+        "num_classes": int(cfg.model.num_classes),
+        "dataset": dataset,
+        "preprocessing": OmegaConf.to_container(cfg.model.preprocessing, resolve=True),
+        "training": OmegaConf.to_container(cfg.train.bilstm_cnn, resolve=True),
+        "model": OmegaConf.to_container(cfg.model.params, resolve=True),
+        "output": {"save_dir": to_absolute_path(cfg.outputs.bilstm_cnn_dir)},
+    }
+    BiLSTMCNNTrainer(trainer_config).run()
+
+
+BASELINE_RUNNERS = {
+    "svm": run_svm,
+    "knn": run_knn,
+    "rf": run_rf,
+    "bilstm_cnn": run_bilstm_cnn,
+}
+
+
+def run_ensemble(cfg: DictConfig) -> None:
+    """Run the KAN -> XGBoost -> fusion stages selected in train.stages."""
     stages = _normalize_stages(cfg.train.stages)
     unknown = sorted(set(stages) - set(VALID_STAGES))
     if unknown:
@@ -204,6 +284,27 @@ def main(cfg: DictConfig) -> None:
         run_static_fusion(cfg)
 
     print("\n[DONE] Pipeline finished for stages:", ", ".join(stages) or "(none)")
+
+
+@hydra.main(version_base=None, config_path="../conf", config_name="config")
+def main(cfg: DictConfig) -> None:
+    print("=" * 64)
+    print("RESOLVED CONFIGURATION")
+    print("=" * 64)
+    print(OmegaConf.to_yaml(cfg))
+
+    model_name = str(cfg.model.get("name", "kan_xgboost"))
+    if model_name == "kan_xgboost":
+        run_ensemble(cfg)
+    elif model_name in BASELINE_RUNNERS:
+        print(f"\n>>> BASELINE: {model_name}")
+        BASELINE_RUNNERS[model_name](cfg)
+        print(f"\n[DONE] Baseline '{model_name}' finished.")
+    else:
+        raise ValueError(
+            f"Unknown model.name '{model_name}'. Expected 'kan_xgboost' or "
+            f"one of: {sorted(BASELINE_RUNNERS)}"
+        )
 
 
 if __name__ == "__main__":
