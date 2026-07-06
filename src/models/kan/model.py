@@ -17,12 +17,11 @@ from pathlib import Path
 import torch
 from torch import nn
 
-# Allow this module to be imported both as part of the `src.models.kan`
-# package and as a bare top-level module (e.g. when `train.py` runs as a
-# script and does `import model`).
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# Make the project root importable so `layers` can be imported through its
+# package path regardless of how this module itself was loaded.
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from layers import (  # noqa: E402
+from src.models.kan.layers import (  # noqa: E402
     ContextInteractionLayer,
     EmotionHotspotLayer,
     SemanticCompressionLayer,

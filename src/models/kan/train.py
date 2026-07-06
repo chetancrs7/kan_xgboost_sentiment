@@ -32,17 +32,24 @@ import numpy as np
 import torch
 from torch import nn
 
-# Allow running both as a script (`python src/models/kan/train.py`) and as a
-# module (`python -m src.models.kan.train`).
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# Make the project root importable so this file works as a script
+# (`python src/models/kan/train.py`), as a module (`python -m
+# src.models.kan.train`), and imported from the Hydra entry point
+# (`src/train.py`). Package-qualified imports avoid clashing with the
+# XGBoost expert's identically named data_loader/evaluate/model modules.
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from data_loader import DEFAULT_EMBEDDINGS_DIR, build_dataloaders, load_splits  # noqa: E402
-from evaluate import (  # noqa: E402
+from src.models.kan.data_loader import (  # noqa: E402
+    DEFAULT_EMBEDDINGS_DIR,
+    build_dataloaders,
+    load_splits,
+)
+from src.models.kan.evaluate import (  # noqa: E402
     confidence_from_entropy,
     evaluate_split,
     logits_to_probs,
 )
-from model import DEFAULT_HIDDEN_DIMS, KANSentimentClassifier  # noqa: E402
+from src.models.kan.model import DEFAULT_HIDDEN_DIMS, KANSentimentClassifier  # noqa: E402
 
 DEFAULT_OUTPUT_DIR = "models/kan"
 DEFAULT_EPOCHS = 200
@@ -297,8 +304,9 @@ def save_artifacts(
     print(f"\n[INFO] All artifacts saved to: {output_dir.resolve()}")
 
 
-def main() -> None:
-    args = parse_args()
+def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = parse_args()
     set_global_seed(args.seed)
     device = resolve_device(args.device)
     print(f"[INFO] Using device: {device}")
