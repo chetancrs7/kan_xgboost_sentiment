@@ -12,7 +12,7 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
 )
 
-from model import BATCH_SIZE, ArrayLike
+from src.baselines.bilstm_cnn.model import BATCH_SIZE, ArrayLike
 
 
 def evaluate(model: Any, x_test: ArrayLike, y_test: ArrayLike) -> dict[str, Any]:

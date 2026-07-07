@@ -37,12 +37,8 @@ fusion:
   gate_holdout: 0.2
 
 # Only used when model=bilstm_cnn (the other baselines tune via the grids
-# in their model configs and have no epoch-based training loop).
+# in their model configs and have no epoch-based training loop). Epoch
+# budget for the final fit after architecture tuning; batch size, learning
+# rate, and early stopping are fixed in src/baselines/bilstm_cnn/model.py.
 bilstm_cnn:
   epochs: 15
-  batch_size: 64
-  learning_rate: 1.0e-3
-  test_size: 0.2
-  validation_split: 0.15
-  early_stopping_patience: 2
-  verbose: 1

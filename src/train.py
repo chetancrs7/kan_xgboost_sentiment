@@ -230,23 +230,19 @@ def run_rf(cfg: DictConfig) -> None:
 
 def run_bilstm_cnn(cfg: DictConfig) -> None:
     """Train, evaluate, and save the BiLSTM-CNN baseline."""
-    from src.baselines.bilstm_cnn.bilstm_cnn import BiLSTMCNNTrainer
+    from src.baselines.bilstm_cnn.train import main as bilstm_cnn_main
 
-    dataset = OmegaConf.to_container(cfg.data.raw, resolve=True)
-    dataset["path"] = to_absolute_path(dataset["path"])
-    # Assemble the nested dict the trainer has always consumed (previously
-    # read from configs/bilstm_cnn.yaml).
-    trainer_config = {
-        "model_name": "bilstm_cnn",
-        "random_state": int(cfg.seed),
-        "num_classes": int(cfg.model.num_classes),
-        "dataset": dataset,
-        "preprocessing": OmegaConf.to_container(cfg.model.preprocessing, resolve=True),
-        "training": OmegaConf.to_container(cfg.train.bilstm_cnn, resolve=True),
-        "model": OmegaConf.to_container(cfg.model.params, resolve=True),
-        "output": {"save_dir": to_absolute_path(cfg.outputs.bilstm_cnn_dir)},
-    }
-    BiLSTMCNNTrainer(trainer_config).run()
+    model_cfg = cfg.model
+    bilstm_cnn_main(argparse.Namespace(
+        train_path=to_absolute_path(cfg.data.splits.train),
+        val_path=to_absolute_path(cfg.data.splits.val),
+        test_path=to_absolute_path(cfg.data.splits.test),
+        vocab_size=int(model_cfg.vocab_size),
+        max_length=int(model_cfg.max_length),
+        epochs=int(cfg.train.bilstm_cnn.epochs),
+        save_dir=to_absolute_path(cfg.outputs.bilstm_cnn_dir),
+        seed=int(cfg.seed),
+    ))
 
 
 BASELINE_RUNNERS = {

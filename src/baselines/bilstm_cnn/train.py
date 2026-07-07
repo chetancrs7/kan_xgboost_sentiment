@@ -20,6 +20,7 @@ from visualize import generate_plots
 from model import (
     EPOCHS,
     MAX_LENGTH,
+    RANDOM_STATE,
     VOCAB_SIZE,
     fit_tokenizer,
     set_reproducibility,
@@ -150,9 +151,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
-    set_reproducibility()
+def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = parse_args()
+    # The Hydra entry point passes cfg.seed; the standalone CLI keeps the
+    # module default.
+    set_reproducibility(getattr(args, "seed", RANDOM_STATE))
 
     train_df, val_df, test_df = load_splits(
         train_path=args.train_path,
