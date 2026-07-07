@@ -191,6 +191,7 @@ def run_svm(cfg: DictConfig) -> None:
         class_weights=tuple(OmegaConf.to_container(model_cfg.class_weights, resolve=True)),
         scoring=str(model_cfg.scoring),
         random_state=int(cfg.seed),
+        plots_dir=str(Path(to_absolute_path(cfg.outputs.svm_dir)) / "plots"),
     ))
 
 
@@ -208,6 +209,7 @@ def run_knn(cfg: DictConfig) -> None:
         k_values=",".join(str(int(k)) for k in model_cfg.k_values),
         weights=tuple(str(w) for w in model_cfg.weights),
         scoring=str(model_cfg.scoring),
+        plots_dir=str(Path(to_absolute_path(cfg.outputs.knn_dir)) / "plots"),
     ))
 
 

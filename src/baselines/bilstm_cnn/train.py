@@ -15,13 +15,9 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-# Make the project root importable so this file works both as a script
-# (`python src/baselines/bilstm_cnn/train.py`) and imported from the Hydra
-# entry point (`src/train.py`).
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-
-from src.baselines.bilstm_cnn.evaluate import evaluate  # noqa: E402
-from src.baselines.bilstm_cnn.model import (  # noqa: E402
+from evaluate import evaluate
+from visualize import generate_plots
+from model import (
     EPOCHS,
     MAX_LENGTH,
     RANDOM_STATE,
@@ -206,6 +202,16 @@ def main(args: argparse.Namespace | None = None) -> None:
 
     evaluate(model, x_test, y_test)
     save_artifacts(model, tokenizer, args.save_dir)
+
+    # Keras attaches the final fit's History callback to the model.
+    history = getattr(model, "history", None)
+    generate_plots(
+        model,
+        x_test,
+        y_test,
+        Path(args.save_dir) / "plots",
+        history=history.history if history is not None else None,
+    )
 
 
 if __name__ == "__main__":

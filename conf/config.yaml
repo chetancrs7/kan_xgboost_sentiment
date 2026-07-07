@@ -28,6 +28,9 @@ outputs:
   kan_dir: models/kan
   xgboost_dir: models/xgboost
   fusion_dir: models/fusion
-  # Baselines that persist artifacts (svm/knn only print evaluation).
+  # Baselines. rf/bilstm_cnn also persist trained artifacts; every baseline
+  # saves its evaluation plots under <dir>/plots.
   rf_dir: models/baselines/rf
   bilstm_cnn_dir: models/baselines/bilstm_cnn
+  knn_dir: models/baselines/knn
+  svm_dir: models/baselines/svm

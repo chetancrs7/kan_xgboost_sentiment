@@ -28,6 +28,7 @@ from src.baselines.rf.model import (  # noqa: E402
     train_final_model,
     tune_model,
 )
+from src.baselines.rf.visualize import generate_plots  # noqa: E402
 
 DEFAULT_TRAIN_PATH = "data/splits/train.csv"
 DEFAULT_VAL_PATH = "data/splits/val.csv"
@@ -149,7 +150,7 @@ def main(args: argparse.Namespace | None = None) -> None:
         test_path=args.test_path,
     )
 
-    best_params = tune_model(
+    best_params, tuning_history = tune_model(
         train_texts=train_df[TEXT_COLUMN],
         y_train=train_df[LABEL_COLUMN],
         val_texts=val_df[TEXT_COLUMN],
@@ -169,6 +170,13 @@ def main(args: argparse.Namespace | None = None) -> None:
 
     evaluate(model, test_df[TEXT_COLUMN], test_df[LABEL_COLUMN])
     save_artifacts(model, args.save_dir)
+    generate_plots(
+        model,
+        test_df[TEXT_COLUMN],
+        test_df[LABEL_COLUMN],
+        Path(args.save_dir) / "plots",
+        tuning_history=tuning_history,
+    )
 
 
 if __name__ == "__main__":

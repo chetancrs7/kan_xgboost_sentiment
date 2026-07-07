@@ -1,0 +1,204 @@
+"""Visualization helpers for the TF-IDF + SVM baseline.
+
+Saves evaluation figures for a trained pipeline: confusion-matrix heatmap,
+ROC curve, precision-recall curve, the C-tuning curve recorded on the
+validation split, and the most influential TF-IDF terms per sentiment.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import matplotlib
+
+matplotlib.use("Agg")  # headless-safe; must precede pyplot import
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from sklearn.metrics import (
+    auc,
+    average_precision_score,
+    confusion_matrix,
+    precision_recall_curve,
+    roc_curve,
+)
+from sklearn.pipeline import Pipeline
+
+MODEL_LABEL = "TF-IDF + SVM"
+CLASS_NAMES: tuple[str, ...] = ("Negative", "Positive")
+
+
+def plot_confusion_matrix(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    output_path: Path | str,
+    class_names: tuple[str, ...] = CLASS_NAMES,
+    title: str = f"{MODEL_LABEL} Confusion Matrix",
+) -> None:
+    """Save an annotated confusion-matrix heatmap."""
+    cm = confusion_matrix(y_true, y_pred)
+    fig, ax = plt.subplots(figsize=(5.5, 5))
+    im = ax.imshow(cm, cmap="Blues")
+    ax.set_xticks(range(len(class_names)), class_names)
+    ax.set_yticks(range(len(class_names)), class_names)
+    ax.set_xlabel("Predicted label")
+    ax.set_ylabel("True label")
+    ax.set_title(title)
+    threshold = cm.max() / 2.0
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(
+                j, i, f"{cm[i, j]:,}",
+                ha="center", va="center",
+                color="white" if cm[i, j] > threshold else "black",
+            )
+    fig.colorbar(im, ax=ax, fraction=0.046)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+
+
+def plot_roc_curve(
+    y_true: np.ndarray,
+    y_score: np.ndarray,
+    output_path: Path | str,
+    title: str = f"{MODEL_LABEL} ROC Curve",
+) -> None:
+    """Save the ROC curve with the AUC annotated (decision-function scores)."""
+    fpr, tpr, _ = roc_curve(y_true, y_score)
+    roc_auc = auc(fpr, tpr)
+    fig, ax = plt.subplots(figsize=(6.5, 6))
+    ax.plot(fpr, tpr, color="#4878d0", linewidth=2, label=f"ROC (AUC = {roc_auc:.4f})")
+    ax.plot([0, 1], [0, 1], "k--", linewidth=1, label="Chance")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1.02)
+    ax.set_xlabel("False positive rate")
+    ax.set_ylabel("True positive rate")
+    ax.set_title(title)
+    ax.legend(loc="lower right")
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+
+
+def plot_precision_recall_curve(
+    y_true: np.ndarray,
+    y_score: np.ndarray,
+    output_path: Path | str,
+    title: str = f"{MODEL_LABEL} Precision-Recall Curve",
+) -> None:
+    """Save the precision-recall curve with average precision annotated."""
+    precision, recall, _ = precision_recall_curve(y_true, y_score)
+    ap = average_precision_score(y_true, y_score)
+    fig, ax = plt.subplots(figsize=(6.5, 6))
+    ax.plot(recall, precision, color="#4878d0", linewidth=2, label=f"PR (AP = {ap:.4f})")
+    ax.axhline(
+        float(np.mean(y_true)), color="k", linestyle="--", linewidth=1,
+        label="Positive-class prevalence",
+    )
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1.02)
+    ax.set_xlabel("Recall")
+    ax.set_ylabel("Precision")
+    ax.set_title(title)
+    ax.legend(loc="lower left")
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+
+
+def plot_tuning_curve(
+    tuning_history: list[dict[str, Any]],
+    output_path: Path | str,
+    scoring: str = "f1_macro",
+) -> None:
+    """Save the validation score of every (C, class_weight) candidate tried.
+
+    Args:
+        tuning_history: Records from ``tune_svm`` with keys
+            ``C``, ``class_weight``, and ``score``.
+        output_path: Destination PNG path.
+        scoring: Metric name for the y-axis label.
+    """
+    df = pd.DataFrame(tuning_history)
+    df["class_weight"] = df["class_weight"].fillna("none")
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    for class_weight, group in df.groupby("class_weight"):
+        group = group.sort_values("C")
+        ax.plot(group["C"], group["score"], marker="o", label=f"class_weight={class_weight}")
+    best = df.loc[df["score"].idxmax()]
+    ax.scatter(
+        [best["C"]], [best["score"]],
+        s=140, facecolors="none", edgecolors="#d65f5f", linewidths=2,
+        zorder=5, label=f"best (C={best['C']:g}, {best['score']:.4f})",
+    )
+    ax.set_xscale("log")
+    ax.set_xlabel("C (regularization strength, log scale)")
+    ax.set_ylabel(f"Validation {scoring}")
+    ax.set_title(f"{MODEL_LABEL} Hyperparameter Tuning")
+    ax.legend()
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+
+
+def plot_top_coefficients(
+    model: Pipeline,
+    output_path: Path | str,
+    top_n: int = 20,
+) -> None:
+    """Save the TF-IDF terms with the largest positive and negative weights.
+
+    Positive coefficients push the prediction towards the positive class,
+    negative ones towards the negative class.
+    """
+    feature_names = np.asarray(model.named_steps["tfidf"].get_feature_names_out())
+    coefs = np.asarray(model.named_steps["svm"].coef_).ravel()
+    top_n = min(top_n, len(feature_names) // 2)
+    order = np.argsort(coefs)
+    selected = np.concatenate([order[:top_n], order[-top_n:]])
+    colors = ["#d65f5f"] * top_n + ["#4878d0"] * top_n
+
+    fig, ax = plt.subplots(figsize=(7.5, 0.28 * 2 * top_n + 1.5))
+    ax.barh(
+        range(len(selected)), coefs[selected],
+        color=colors, edgecolor="black", linewidth=0.4,
+    )
+    ax.set_yticks(range(len(selected)), feature_names[selected])
+    ax.axvline(0, color="k", linewidth=0.8)
+    ax.set_xlabel("LinearSVC coefficient")
+    ax.set_title(f"{MODEL_LABEL}: Top {top_n} Negative / Positive Terms")
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+
+
+def generate_plots(
+    model: Pipeline,
+    X_test: pd.Series,
+    y_test: pd.Series,
+    output_dir: Path | str,
+    tuning_history: list[dict[str, Any]] | None = None,
+) -> None:
+    """Save all evaluation figures for the trained pipeline to ``output_dir``."""
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # LinearSVC has no predict_proba; ROC/PR use the margin instead.
+    y_true = np.asarray(y_test)
+    y_score = model.decision_function(X_test)
+    y_pred = model.classes_[(y_score > 0).astype(int)]
+
+    plot_confusion_matrix(y_true, y_pred, out_dir / "confusion_matrix.png")
+    plot_roc_curve(y_true, y_score, out_dir / "roc_curve.png")
+    plot_precision_recall_curve(y_true, y_score, out_dir / "precision_recall_curve.png")
+    plot_top_coefficients(model, out_dir / "top_coefficients.png")
+    if tuning_history:
+        plot_tuning_curve(tuning_history, out_dir / "tuning_curve.png")
+
+    print(f"[INFO] Saved evaluation plots to '{out_dir}'.")
