@@ -124,12 +124,16 @@ def tune_model(
     random_state: int = RANDOM_STATE,
     n_jobs: int = N_JOBS,
     candidates: list[RandomForestParams] | None = None,
-) -> RandomForestParams:
-    """Grid-search forest params on the validation split (macro-F1)."""
+) -> tuple[RandomForestParams, list[dict[str, object]]]:
+    """Grid-search forest params on the validation split (macro-F1).
+
+    Returns the best parameters plus the full tuning history (one record
+    per candidate) for visualization.
+    """
     candidates = candidates if candidates is not None else param_candidates()
     if len(candidates) == 1:
         print(f"[INFO] Single candidate; skipping tuning: {candidates[0]}")
-        return candidates[0]
+        return candidates[0], []
 
     print(
         f"[INFO] Tuning Random Forest on validation split "
@@ -138,6 +142,7 @@ def tune_model(
 
     best_score = -np.inf
     best_params = candidates[0]
+    history: list[dict[str, object]] = []
 
     for params in candidates:
         model = build_model(
@@ -150,6 +155,14 @@ def tune_model(
         y_pred = model.predict(val_texts)
         score = f1_score(y_val, y_pred, average="macro", zero_division=0)
         print(f"[INFO]   {params} -> val macro-F1={score:.4f}")
+        history.append(
+            {
+                "n_estimators": params.n_estimators,
+                "max_depth": params.max_depth,
+                "min_samples_leaf": params.min_samples_leaf,
+                "score": float(score),
+            }
+        )
 
         if score > best_score:
             best_score = score
@@ -157,7 +170,7 @@ def tune_model(
 
     print(f"[INFO] Best validation {SCORING}: {best_score:.4f}")
     print(f"[INFO] Best parameters: {best_params}")
-    return best_params
+    return best_params, history
 
 
 def train_final_model(

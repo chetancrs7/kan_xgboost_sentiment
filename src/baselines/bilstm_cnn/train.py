@@ -16,6 +16,7 @@ import joblib
 import pandas as pd
 
 from evaluate import evaluate
+from visualize import generate_plots
 from model import (
     EPOCHS,
     MAX_LENGTH,
@@ -197,6 +198,16 @@ def main() -> None:
 
     evaluate(model, x_test, y_test)
     save_artifacts(model, tokenizer, args.save_dir)
+
+    # Keras attaches the final fit's History callback to the model.
+    history = getattr(model, "history", None)
+    generate_plots(
+        model,
+        x_test,
+        y_test,
+        Path(args.save_dir) / "plots",
+        history=history.history if history is not None else None,
+    )
 
 
 if __name__ == "__main__":

@@ -77,8 +77,12 @@ def tune_svm(
     class_weights: tuple[str | None, ...],
     scoring: str,
     random_state: int,
-) -> dict[str, Any]:
-    """Tune C and class weighting on the existing validation split."""
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Tune C and class weighting on the existing validation split.
+
+    Returns the best parameters plus the full tuning history (one record
+    per candidate) for visualization.
+    """
     print(
         "[INFO] Tuning SVM on validation split "
         f"(c_values={c_values}, class_weights={class_weights}, "
@@ -87,6 +91,7 @@ def tune_svm(
 
     best_score = -np.inf
     best_params: dict[str, Any] = {}
+    history: list[dict[str, Any]] = []
 
     for c in c_values:
         for class_weight in class_weights:
@@ -104,6 +109,9 @@ def tune_svm(
             pipeline.fit(X_train, y_train)
             y_pred = pipeline.predict(X_val)
             score = f1_score(y_val, y_pred, average="macro", zero_division=0)
+            history.append(
+                {"C": c, "class_weight": class_weight, "score": float(score)}
+            )
 
             if score > best_score:
                 best_score = score
@@ -114,7 +122,7 @@ def tune_svm(
 
     print(f"[INFO] Best validation {scoring}: {best_score:.4f}")
     print(f"[INFO] Best parameters: {best_params}")
-    return best_params
+    return best_params, history
 
 
 def train_final_model(

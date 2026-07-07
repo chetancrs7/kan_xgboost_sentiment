@@ -94,8 +94,12 @@ def tune_knn(
     k_values: tuple[int, ...],
     weights: tuple[str, ...],
     scoring: str,
-) -> dict[str, Any]:
-    """Tune k and vote weighting on the existing validation split."""
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Tune k and vote weighting on the existing validation split.
+
+    Returns the best parameters plus the full tuning history (one record
+    per candidate) for visualization.
+    """
     safe_k_values = filter_k_values(k_values, len(X_train))
     print(
         "[INFO] Tuning KNN on validation split "
@@ -105,6 +109,7 @@ def tune_knn(
 
     best_score = -np.inf
     best_params: dict[str, Any] = {}
+    history: list[dict[str, Any]] = []
 
     for k in safe_k_values:
         for weight in weights:
@@ -121,6 +126,7 @@ def tune_knn(
             pipeline.fit(X_train, y_train)
             y_pred = pipeline.predict(X_val)
             score = f1_score(y_val, y_pred, average="macro", zero_division=0)
+            history.append({"k": k, "weights": weight, "score": float(score)})
 
             if score > best_score:
                 best_score = score
@@ -131,7 +137,7 @@ def tune_knn(
 
     print(f"[INFO] Best validation {scoring}: {best_score:.4f}")
     print(f"[INFO] Best parameters: {best_params}")
-    return best_params
+    return best_params, history
 
 
 def train_final_model(
