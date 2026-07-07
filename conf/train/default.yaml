@@ -21,6 +21,16 @@ kan:
   patience: 15
   # Refit adaptive spline grids every N epochs (0 disables).
   grid_update_freq: 10
+  # --- Spline interpretability (src/analysis) ---
+  # Generate the publication-style spline visualization report after
+  # training (knots, basis functions, learned curves, heatmaps,
+  # before/after, feature responses) under outputs.spline_viz_dir.
+  enable_spline_visualization: true
+  # Importance-ranked input dimensions per layer to visualize.
+  spline_viz_top_k: 8
+  # Log spline diagnostics (coefficient histograms, knot ranges, edge
+  # curves) to TensorBoard (outputs.kan_tensorboard_dir) during training.
+  enable_tensorboard: false
 
 fusion:
   epochs: 300

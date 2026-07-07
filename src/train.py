@@ -84,6 +84,17 @@ def run_kan(cfg: DictConfig) -> None:
         grid_update_freq=int(train_cfg.grid_update_freq),
         seed=int(cfg.seed),
         device=cfg.device,
+        # Spline interpretability (src/analysis). .get() defaults keep older
+        # custom train/*.yaml files without these keys working unchanged.
+        enable_spline_visualization=bool(train_cfg.get("enable_spline_visualization", True)),
+        spline_viz_top_k=int(train_cfg.get("spline_viz_top_k", 8)),
+        enable_tensorboard=bool(train_cfg.get("enable_tensorboard", False)),
+        spline_viz_dir=to_absolute_path(
+            str(cfg.outputs.get("spline_viz_dir", "outputs/kan_spline_visualizations"))
+        ),
+        tensorboard_dir=to_absolute_path(
+            str(cfg.outputs.get("kan_tensorboard_dir", "outputs/tensorboard/kan"))
+        ),
     ))
 
 

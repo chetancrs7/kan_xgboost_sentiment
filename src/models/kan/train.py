@@ -11,6 +11,10 @@ Execution flow
    stopping on validation loss.
 4. Evaluate train/val/test, export probabilities + entropy-based confidence.
 5. Persist model weights, training-curve plot, and metrics.
+6. Optionally (on by default, see --enable-spline-visualization) generate the
+   spline interpretability report via ``src/analysis``; optionally
+   (--enable-tensorboard) log spline diagnostics to TensorBoard during
+   training. Both are best-effort and can never fail the training run.
 
 Usage:
     python src/models/kan/train.py
@@ -106,6 +110,40 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--device", default=None, help="Force 'cpu' or 'cuda' (default: auto-detect)."
     )
+    # --- Spline interpretability (src/analysis) -----------------------------
+    # These are strictly additive: with visualization and TensorBoard both
+    # disabled, training behaves exactly as before.
+    viz = parser.add_argument_group("spline interpretability (src/analysis)")
+    viz.add_argument(
+        "--enable-spline-visualization",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Generate the spline interpretability figures after training "
+        "(disable with --no-enable-spline-visualization).",
+    )
+    viz.add_argument(
+        "--spline-viz-dir",
+        default="outputs/kan_spline_visualizations",
+        help="Where the interpretability figures are written.",
+    )
+    viz.add_argument(
+        "--spline-viz-top-k",
+        type=int,
+        default=8,
+        help="Input dimensions per layer to visualize (importance-ranked).",
+    )
+    viz.add_argument(
+        "--enable-tensorboard",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Log spline diagnostics (coefficient histograms, knot ranges, "
+        "edge curves) to TensorBoard during training.",
+    )
+    viz.add_argument(
+        "--tensorboard-dir",
+        default="outputs/tensorboard/kan",
+        help="TensorBoard log directory (used with --enable-tensorboard).",
+    )
     return parser.parse_args()
 
 
@@ -173,8 +211,15 @@ def train_model(
     weight_decay: float,
     patience: int,
     grid_update_freq: int,
+    tb_logger=None,
 ) -> dict[str, list[float]]:
     """Train with cross-entropy loss, periodic grid adaptation, and early stopping.
+
+    Args:
+        tb_logger: optional ``src.analysis.tensorboard_logger.
+            SplineTensorBoardLogger``. Logging is failure-proof by design
+            (any internal error disables it); ``None`` keeps training
+            byte-identical to the pre-analysis behaviour.
 
     Returns:
         A ``history`` dict with per-epoch ``train_loss``, ``train_acc``,
@@ -205,6 +250,13 @@ def train_model(
         history["train_acc"].append(train_acc)
         history["val_loss"].append(val_loss)
         history["val_acc"].append(val_acc)
+
+        if tb_logger is not None:
+            tb_logger.log_epoch_metrics(epoch, {
+                "train_loss": train_loss, "train_acc": train_acc,
+                "val_loss": val_loss, "val_acc": val_acc,
+            })
+            tb_logger.log_spline_state(model, epoch)
 
         if grid_update_freq and epoch % grid_update_freq == 0 and epoch < epochs:
             model.update_grids(seed_batch)
@@ -340,6 +392,43 @@ def main(args: argparse.Namespace | None = None) -> None:
         f"{hidden_dims[1]} -> {hidden_dims[2]} -> {n_classes}"
     )
 
+    # 2b. Optional spline interpretability hooks (src/analysis) -------------
+    # getattr defaults keep this backward compatible with callers that pass a
+    # bare Namespace without the new flags (e.g. older scripts).
+    viz_enabled = bool(getattr(args, "enable_spline_visualization", False))
+    tb_enabled = bool(getattr(args, "enable_tensorboard", False))
+    serializable_config = {
+        k: (list(v) if isinstance(v, tuple) else v) for k, v in model_config.items()
+    }
+
+    tb_logger = None
+    if tb_enabled:
+        try:
+            from src.analysis.tensorboard_logger import SplineTensorBoardLogger
+
+            tb_logger = SplineTensorBoardLogger(
+                getattr(args, "tensorboard_dir", "outputs/tensorboard/kan")
+            )
+        except Exception as exc:  # analysis extras must never block training
+            print(f"[WARN] Could not set up TensorBoard spline logging: {exc}")
+
+    before_model = None
+    if viz_enabled:
+        # Snapshot the model *before* any gradient step but *after* seeding
+        # the knot grids from real data, so before/after figures isolate what
+        # gradient descent learned (train_model repeats the same seeding;
+        # refitting the grid twice on the same batch is a harmless no-op).
+        seed_batch = torch.from_numpy(X_train[: min(len(X_train), 512)]).to(device)
+        model.update_grids(seed_batch)
+        before_model = copy.deepcopy(model)
+        init_path = Path(args.output_dir) / "kan_model_init.pt"
+        init_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {"model_state_dict": before_model.state_dict(), "config": serializable_config},
+            init_path,
+        )
+        print(f"[INFO] Saved pre-training spline snapshot to: {init_path}")
+
     # 3. Train with early stopping ------------------------------------------
     history = train_model(
         model,
@@ -352,7 +441,10 @@ def main(args: argparse.Namespace | None = None) -> None:
         weight_decay=args.weight_decay,
         patience=args.patience,
         grid_update_freq=args.grid_update_freq,
+        tb_logger=tb_logger,
     )
+    if tb_logger is not None:
+        tb_logger.close()
 
     # 4. Evaluate + export probabilities / confidence -----------------------
     print("\n" + "=" * 64)
@@ -382,6 +474,27 @@ def main(args: argparse.Namespace | None = None) -> None:
         probs=probs,
         confidence=confidence,
     )
+
+    # 6. Optional spline interpretability report ------------------------------
+    # Best-effort by design: a visualization failure must never invalidate a
+    # finished training run, so everything is wrapped and only warns.
+    if viz_enabled:
+        try:
+            from src.analysis.spline_visualizer import generate_all_visualizations
+
+            written = generate_all_visualizations(
+                model,
+                X=X_train[: min(len(X_train), 256)],
+                before_model=before_model,
+                output_dir=Path(getattr(args, "spline_viz_dir", "outputs/kan_spline_visualizations")),
+                top_k=int(getattr(args, "spline_viz_top_k", 8)),
+            )
+            print(f"[INFO] Spline interpretability report: {len(written)} files.")
+        except Exception as exc:
+            print(
+                f"[WARN] Spline visualization failed ({exc}). "
+                "Training artifacts above are unaffected."
+            )
 
     print("\n[DONE] KAN expert pipeline complete.")
 
