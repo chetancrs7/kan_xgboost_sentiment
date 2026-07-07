@@ -28,14 +28,14 @@ With plain argparse, every tunable needs its own `--flag`, defaults are buried i
 
 | File | Keys |
 |---|---|
-| `config.yaml` | defaults list, `seed`, `device` (null = auto), `outputs.{kan_dir,xgboost_dir,fusion_dir,rf_dir,bilstm_cnn_dir}` |
+| `config.yaml` | defaults list, `seed`, `device` (null = auto), `outputs.{kan_dir,xgboost_dir,fusion_dir,spline_viz_dir,kan_tensorboard_dir,rf_dir,bilstm_cnn_dir}` |
 | `data/default.yaml` | `splits.{train,val,test}`, `embeddings_dir`, `raw.{path,encoding,header,text_column,label_column,sample_size}`, `fusion.{inputs_dir,kan_dir}` |
 | `model/kan_xgboost.yaml` | `kan.{hidden_dims,grid_size,spline_order,grid_range}` · `xgboost.{use_optuna,n_trials,n_estimators,max_depth,learning_rate,subsample,colsample_bytree,min_child_weight,gamma,reg_alpha,reg_lambda}` · `fusion.{hidden_dim,dropout,residual_bins,kan_weight}` |
 | `model/svm.yaml` | `max_features`, `c_values`, `class_weights`, `scoring` |
 | `model/knn.yaml` | `max_features`, `k_values`, `weights`, `scoring` |
 | `model/rf.yaml` | `max_features` |
 | `model/bilstm_cnn.yaml` | `num_classes`, `preprocessing.{vocab_size,max_length,padding,truncating,lowercase}`, `params.{embedding_dim,lstm_units,filters,kernel_size,dense_units,dropout_rate}` |
-| `train/default.yaml` | `stages` · `kan.{epochs,batch_size,lr,weight_decay,patience,grid_update_freq}` · `fusion.{epochs,batch_size,lr,weight_decay,patience,scheduler_patience,scheduler_factor,min_lr,gate_holdout}` · `bilstm_cnn.{epochs,batch_size,learning_rate,test_size,validation_split,early_stopping_patience,verbose}` |
+| `train/default.yaml` | `stages` · `kan.{epochs,batch_size,lr,weight_decay,patience,grid_update_freq,enable_spline_visualization,spline_viz_top_k,enable_tensorboard}` · `fusion.{epochs,batch_size,lr,weight_decay,patience,scheduler_patience,scheduler_factor,min_lr,gate_holdout}` · `bilstm_cnn.{epochs,batch_size,learning_rate,test_size,validation_split,early_stopping_patience,verbose}` |
 
 Every `model/*.yaml` carries a `name:` discriminator that `src/train.py` dispatches on. New config-group variants can be added as extra files, e.g. `conf/data/subsample.yaml`, then selected with `python src/train.py data=subsample`.
 
