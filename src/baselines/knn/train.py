@@ -29,10 +29,12 @@ from src.baselines.knn.model import (  # noqa: E402
     train_final_model,
     tune_knn,
 )
+from src.baselines.knn.visualize import generate_plots  # noqa: E402
 
 DEFAULT_TRAIN_PATH = "data/splits/train.csv"
 DEFAULT_VAL_PATH = "data/splits/val.csv"
 DEFAULT_TEST_PATH = "data/splits/test.csv"
+DEFAULT_PLOTS_DIR = "models/baselines/knn/plots"
 TEXT_COLUMN: str = "clean_text"
 LABEL_COLUMN: str = "label"
 
@@ -128,6 +130,11 @@ def parse_args() -> argparse.Namespace:
         default=",".join(str(value) for value in K_VALUES),
         help="Comma-separated k values to tune (default: %(default)s).",
     )
+    parser.add_argument(
+        "--plots-dir",
+        default=DEFAULT_PLOTS_DIR,
+        help="Directory for the evaluation plots (default: %(default)s).",
+    )
     return parser.parse_args()
 
 
@@ -148,7 +155,7 @@ def main(args: argparse.Namespace | None = None) -> None:
     y_test = test_df[LABEL_COLUMN]
 
     try:
-        best_params = tune_knn(
+        best_params, tuning_history = tune_knn(
             X_train=X_train,
             y_train=y_train,
             X_val=X_val,
@@ -176,6 +183,14 @@ def main(args: argparse.Namespace | None = None) -> None:
     print(f"[INFO] Vocabulary size: {vocab_size:,} terms.")
 
     evaluate(model, X_test, y_test)
+    # The Hydra entry point may not supply --plots-dir; fall back to default.
+    generate_plots(
+        model,
+        X_test,
+        y_test,
+        getattr(args, "plots_dir", DEFAULT_PLOTS_DIR),
+        tuning_history=tuning_history,
+    )
 
 
 if __name__ == "__main__":
