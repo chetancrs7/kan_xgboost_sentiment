@@ -28,6 +28,9 @@ outputs:
   kan_dir: models/kan
   xgboost_dir: models/xgboost
   fusion_dir: models/fusion
+  # KAN spline interpretability (see src/analysis and train.kan.* flags).
+  spline_viz_dir: outputs/kan_spline_visualizations
+  kan_tensorboard_dir: outputs/tensorboard/kan
   # Baselines. rf/bilstm_cnn also persist trained artifacts; every baseline
   # saves its evaluation plots under <dir>/plots.
   rf_dir: models/baselines/rf
