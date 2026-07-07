@@ -15,10 +15,16 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-from evaluate import evaluate
-from model import (
+# Make the project root importable so this file works both as a script
+# (`python src/baselines/bilstm_cnn/train.py`) and imported from the Hydra
+# entry point (`src/train.py`).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from src.baselines.bilstm_cnn.evaluate import evaluate  # noqa: E402
+from src.baselines.bilstm_cnn.model import (  # noqa: E402
     EPOCHS,
     MAX_LENGTH,
+    RANDOM_STATE,
     VOCAB_SIZE,
     fit_tokenizer,
     set_reproducibility,
@@ -149,9 +155,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
-    set_reproducibility()
+def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = parse_args()
+    # The Hydra entry point passes cfg.seed; the standalone CLI keeps the
+    # module default.
+    set_reproducibility(getattr(args, "seed", RANDOM_STATE))
 
     train_df, val_df, test_df = load_splits(
         train_path=args.train_path,

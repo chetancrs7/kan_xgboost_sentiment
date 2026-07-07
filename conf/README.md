@@ -55,7 +55,7 @@ python src/train.py "train.stages='kan,fusion'"
 # Train a baseline instead of the ensemble
 python src/train.py model=svm
 python src/train.py model=rf model.max_features=30000
-python src/train.py model=bilstm_cnn train.bilstm_cnn.epochs=5 data.raw.sample_size=100000
+python src/train.py model=bilstm_cnn train.bilstm_cnn.epochs=5
 
 # Show the composed config without training
 python src/train.py --cfg job
@@ -82,14 +82,14 @@ Selecting a baseline with `model=<name>` replaces the ensemble stages entirely (
 python src/train.py model=svm model.c_values=[0.5,1.0] model.class_weights=[balanced]
 python src/train.py model=knn model.k_values=[5,9] model.weights=[distance]
 python src/train.py model=rf model.max_features=30000
-python src/train.py model=bilstm_cnn model.params.lstm_units=64 train.bilstm_cnn.epochs=5
+python src/train.py model=bilstm_cnn model.max_length=150 train.bilstm_cnn.epochs=5
 ```
 
 | Baseline | Data | Saves |
 |---|---|---|
 | `svm`, `knn` | `data.splits.*` (`clean_text` column) | nothing — prints evaluation |
 | `rf` | `data.splits.*` (`clean_text` column) | pipeline to `outputs.rf_dir` |
-| `bilstm_cnn` | `data.raw` (raw Sentiment140; does its own split; set `data.raw.sample_size` for quick runs) | model + tokenizer to `outputs.bilstm_cnn_dir` |
+| `bilstm_cnn` | `data.splits.*` (`clean_text` column) | model + tokenizer to `outputs.bilstm_cnn_dir` |
 
 `svm`, `knn`, and `rf` share the `max_features` key, so one override can span a model sweep: `python src/train.py -m model=svm,knn,rf model.max_features=30000`.
 
