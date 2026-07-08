@@ -30,7 +30,7 @@ With plain argparse, every tunable needs its own `--flag`, defaults are buried i
 |---|---|
 | `config.yaml` | defaults list, `seed`, `device` (null = auto), `outputs.{kan_dir,xgboost_dir,fusion_dir,spline_viz_dir,kan_tensorboard_dir,rf_dir,bilstm_cnn_dir}` |
 | `data/default.yaml` | `splits.{train,val,test}`, `embeddings_dir`, `raw.{path,encoding,header,text_column,label_column,sample_size}`, `fusion.{inputs_dir,kan_dir}` |
-| `model/kan_xgboost.yaml` | `kan.{hidden_dims,grid_size,spline_order,grid_range}` · `xgboost.{use_optuna,n_trials,n_estimators,max_depth,learning_rate,subsample,colsample_bytree,min_child_weight,gamma,reg_alpha,reg_lambda}` · `fusion.{hidden_dim,dropout,residual_bins,kan_weight}` |
+| `model/kan_xgboost.yaml` | `kan.{hidden_dims,grid_size,spline_order,grid_range,spline_types,output_type}` · `xgboost.{use_optuna,n_trials,n_estimators,max_depth,learning_rate,subsample,colsample_bytree,min_child_weight,gamma,reg_alpha,reg_lambda}` · `fusion.{hidden_dim,dropout,residual_bins,kan_weight}` |
 | `model/svm.yaml` | `max_features`, `c_values`, `class_weights`, `scoring` |
 | `model/knn.yaml` | `max_features`, `k_values`, `weights`, `scoring` |
 | `model/rf.yaml` | `max_features` |
