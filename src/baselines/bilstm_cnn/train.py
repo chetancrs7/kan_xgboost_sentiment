@@ -16,9 +16,11 @@ import joblib
 import pandas as pd
 
 from evaluate import evaluate
+from visualize import generate_plots
 from model import (
     EPOCHS,
     MAX_LENGTH,
+    RANDOM_STATE,
     VOCAB_SIZE,
     fit_tokenizer,
     set_reproducibility,
@@ -149,9 +151,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
-    set_reproducibility()
+def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = parse_args()
+    # The Hydra entry point passes cfg.seed; the standalone CLI keeps the
+    # module default.
+    set_reproducibility(getattr(args, "seed", RANDOM_STATE))
 
     train_df, val_df, test_df = load_splits(
         train_path=args.train_path,
@@ -197,6 +202,16 @@ def main() -> None:
 
     evaluate(model, x_test, y_test)
     save_artifacts(model, tokenizer, args.save_dir)
+
+    # Keras attaches the final fit's History callback to the model.
+    history = getattr(model, "history", None)
+    generate_plots(
+        model,
+        x_test,
+        y_test,
+        Path(args.save_dir) / "plots",
+        history=history.history if history is not None else None,
+    )
 
 
 if __name__ == "__main__":

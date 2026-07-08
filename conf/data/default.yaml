@@ -1,0 +1,22 @@
+# Dataset locations. All paths are relative to the project root and are
+# resolved with hydra.utils.to_absolute_path() at runtime, so they keep
+# working even though Hydra changes the working directory per run.
+
+# Pre-split CSVs used by the XGBoost expert (text + label columns).
+splits:
+  train: data/splits/train.csv
+  val: data/splits/val.csv
+  test: data/splits/test.csv
+
+# Precomputed DeBERTa-v3 embeddings used by the KAN expert
+# ({split}_embeddings.npy + {split}_labels.npy).
+embeddings_dir: data/embeddings/deberta_v3_base
+
+# Row-aligned inputs for the fusion gate, produced by
+# scripts/prepare_fusion_inputs.py (seeded 6k/2k/2k subsample).
+fusion:
+  # Contains splits/, embeddings/, xgboost/ subdirectories.
+  inputs_dir: data/fusion_inputs
+  # KAN expert retrained on the subsample embeddings; provides
+  # {split}_probs.npy aligned with the fusion inputs.
+  kan_dir: models/kan_subset

@@ -1,0 +1,54 @@
+# Training / optimisation settings, grouped per pipeline stage.
+
+# Which stages to run, in this fixed order: kan -> xgboost -> fusion.
+# "static_fusion" evaluates a fixed kan_weight blend without training the
+# gate (requires model.fusion.kan_weight to be set).
+# Accepts a list, a bare single value, or a quoted comma-separated string:
+#   python src/train.py train.stages=xgboost
+#   python src/train.py train.stages=[kan,fusion]
+#   python src/train.py "train.stages='kan,fusion'"
+#   python src/train.py train.stages=static_fusion model.fusion.kan_weight=0.7
+# (An UNQUOTED comma, e.g. train.stages=kan,fusion, is reserved by Hydra
+# for multirun sweeps and is rejected in single-run mode.)
+stages: [kan, xgboost, fusion]
+
+kan:
+  epochs: 200
+  batch_size: 32
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  # Early-stopping patience (epochs without val-loss improvement).
+  patience: 15
+  # Refit adaptive spline grids every N epochs (0 disables).
+  grid_update_freq: 10
+  # --- Spline interpretability (src/analysis) ---
+  # Generate the publication-style spline visualization report after
+  # training (knots, basis functions, learned curves, heatmaps,
+  # before/after, feature responses) under outputs.spline_viz_dir.
+  enable_spline_visualization: true
+  # Importance-ranked input dimensions per layer to visualize.
+  spline_viz_top_k: 8
+  # Log spline diagnostics (coefficient histograms, knot ranges, edge
+  # curves) to TensorBoard (outputs.kan_tensorboard_dir) during training.
+  enable_tensorboard: false
+
+fusion:
+  epochs: 300
+  batch_size: 128
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  # Early-stopping patience on the gate-holdout loss.
+  patience: 30
+  # ReduceLROnPlateau settings.
+  scheduler_patience: 10
+  scheduler_factor: 0.5
+  min_lr: 1.0e-6
+  # Fraction of the validation split held out for early stopping.
+  gate_holdout: 0.2
+
+# Only used when model=bilstm_cnn (the other baselines tune via the grids
+# in their model configs and have no epoch-based training loop). Epoch
+# budget for the final fit after architecture tuning; batch size, learning
+# rate, and early stopping are fixed in src/baselines/bilstm_cnn/model.py.
+bilstm_cnn:
+  epochs: 15

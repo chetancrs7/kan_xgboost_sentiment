@@ -1,0 +1,18 @@
+# TF-IDF + k-Nearest-Neighbours baseline.
+#
+#   python src/train.py model=knn
+#   python src/train.py model=knn model.k_values=[5,9] model.weights=[distance]
+#
+# Tunes k x weights on the validation split, then refits and reports test
+# metrics (evaluation only; this baseline does not save a model file).
+
+name: knn
+
+# Maximum TF-IDF vocabulary size (null = unlimited).
+max_features: 50000
+# Neighbour counts evaluated during tuning.
+k_values: [3, 5, 7, 9, 11, 15, 21]
+# Neighbour weighting schemes evaluated during tuning.
+weights: [uniform, distance]
+# Validation metric used to pick the best candidate.
+scoring: f1_macro

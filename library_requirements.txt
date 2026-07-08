@@ -26,3 +26,5 @@ transformers
 sentencepiece
 tqdm
 pykan
+hydra-core
+omegaconf

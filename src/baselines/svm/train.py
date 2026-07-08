@@ -14,8 +14,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from evaluate import evaluate
-from model import (
+# Make the project root importable so this file works both as a script
+# (`python src/baselines/svm/train.py`) and imported from the Hydra entry
+# point (`src/train.py`).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from src.baselines.svm.evaluate import evaluate  # noqa: E402
+from src.baselines.svm.model import (  # noqa: E402
     C_VALUES,
     CLASS_WEIGHTS,
     MAX_FEATURES,
@@ -24,10 +29,12 @@ from model import (
     train_final_model,
     tune_svm,
 )
+from src.baselines.svm.visualize import generate_plots  # noqa: E402
 
 DEFAULT_TRAIN_PATH = "data/splits/train.csv"
 DEFAULT_VAL_PATH = "data/splits/val.csv"
 DEFAULT_TEST_PATH = "data/splits/test.csv"
+DEFAULT_PLOTS_DIR = "models/baselines/svm/plots"
 TEXT_COLUMN: str = "clean_text"
 LABEL_COLUMN: str = "label"
 RANDOM_STATE: int = 42
@@ -130,11 +137,17 @@ def parse_args() -> argparse.Namespace:
         default=RANDOM_STATE,
         help="Random seed for reproducibility (default: %(default)s).",
     )
+    parser.add_argument(
+        "--plots-dir",
+        default=DEFAULT_PLOTS_DIR,
+        help="Directory for the evaluation plots (default: %(default)s).",
+    )
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
+def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = parse_args()
 
     train_df, val_df, test_df = load_splits(
         train_path=args.train_path,
@@ -149,15 +162,17 @@ def main() -> None:
     y_test = test_df[LABEL_COLUMN]
 
     try:
-        best_params = tune_svm(
+        best_params, tuning_history = tune_svm(
             X_train=X_train,
             y_train=y_train,
             X_val=X_val,
             y_val=y_val,
             max_features=args.max_features,
             c_values=parse_c_values(args.c_values),
-            class_weights=CLASS_WEIGHTS,
-            scoring=SCORING,
+            # The Hydra entry point may override these; the standalone CLI
+            # keeps the module defaults.
+            class_weights=getattr(args, "class_weights", CLASS_WEIGHTS),
+            scoring=getattr(args, "scoring", SCORING),
             random_state=args.random_state,
         )
     except ValueError as exc:
@@ -177,6 +192,14 @@ def main() -> None:
     print(f"[INFO] Vocabulary size: {vocab_size:,} terms.")
 
     evaluate(model, X_test, y_test)
+    # The Hydra entry point may not supply --plots-dir; fall back to default.
+    generate_plots(
+        model,
+        X_test,
+        y_test,
+        getattr(args, "plots_dir", DEFAULT_PLOTS_DIR),
+        tuning_history=tuning_history,
+    )
 
 
 if __name__ == "__main__":

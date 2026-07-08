@@ -15,13 +15,20 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-from evaluate import evaluate
-from model import (
+# Make the project root importable so this file works both as a script
+# (`python src/baselines/rf/train.py`) and imported from the Hydra entry
+# point (`src/train.py`).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from src.baselines.rf.evaluate import evaluate  # noqa: E402
+from src.baselines.rf.model import (  # noqa: E402
     MAX_FEATURES,
+    RANDOM_STATE,
     set_reproducibility,
     train_final_model,
     tune_model,
 )
+from src.baselines.rf.visualize import generate_plots  # noqa: E402
 
 DEFAULT_TRAIN_PATH = "data/splits/train.csv"
 DEFAULT_VAL_PATH = "data/splits/val.csv"
@@ -132,9 +139,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
-    set_reproducibility()
+def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = parse_args()
+    set_reproducibility(getattr(args, "seed", RANDOM_STATE))
 
     train_df, val_df, test_df = load_splits(
         train_path=args.train_path,
@@ -142,7 +150,7 @@ def main() -> None:
         test_path=args.test_path,
     )
 
-    best_params = tune_model(
+    best_params, tuning_history = tune_model(
         train_texts=train_df[TEXT_COLUMN],
         y_train=train_df[LABEL_COLUMN],
         val_texts=val_df[TEXT_COLUMN],
@@ -162,6 +170,13 @@ def main() -> None:
 
     evaluate(model, test_df[TEXT_COLUMN], test_df[LABEL_COLUMN])
     save_artifacts(model, args.save_dir)
+    generate_plots(
+        model,
+        test_df[TEXT_COLUMN],
+        test_df[LABEL_COLUMN],
+        Path(args.save_dir) / "plots",
+        tuning_history=tuning_history,
+    )
 
 
 if __name__ == "__main__":
