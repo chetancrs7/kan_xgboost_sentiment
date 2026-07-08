@@ -18,7 +18,8 @@ import pandas as pd
 # Make the project root importable so this file works both as a script
 # (`python src/baselines/rf/train.py`) and imported from the Hydra entry
 # point (`src/train.py`).
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.baselines.rf.evaluate import evaluate  # noqa: E402
 from src.baselines.rf.model import (  # noqa: E402
@@ -30,10 +31,10 @@ from src.baselines.rf.model import (  # noqa: E402
 )
 from src.baselines.rf.visualize import generate_plots  # noqa: E402
 
-DEFAULT_TRAIN_PATH = "data/splits/train.csv"
-DEFAULT_VAL_PATH = "data/splits/val.csv"
-DEFAULT_TEST_PATH = "data/splits/test.csv"
-DEFAULT_SAVE_DIR = "outputs/rf"
+DEFAULT_TRAIN_PATH = str(PROJECT_ROOT / "data/splits/train.csv")
+DEFAULT_VAL_PATH = str(PROJECT_ROOT / "data/splits/val.csv")
+DEFAULT_TEST_PATH = str(PROJECT_ROOT / "data/splits/test.csv")
+DEFAULT_SAVE_DIR = str(PROJECT_ROOT / "outputs/rf")
 TEXT_COLUMN: str = "clean_text"
 LABEL_COLUMN: str = "label"
 

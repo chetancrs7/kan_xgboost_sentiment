@@ -29,10 +29,14 @@ from model import (
     vectorize_texts,
 )
 
-DEFAULT_TRAIN_PATH = "data/splits/train.csv"
-DEFAULT_VAL_PATH = "data/splits/val.csv"
-DEFAULT_TEST_PATH = "data/splits/test.csv"
-DEFAULT_SAVE_DIR = "outputs/bilstm_cnn"
+# Repo root (src/baselines/bilstm_cnn/ -> parents[3]) so defaults resolve
+# relative to the project regardless of the launch directory (cloud/HPC-safe).
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+DEFAULT_TRAIN_PATH = str(PROJECT_ROOT / "data/splits/train.csv")
+DEFAULT_VAL_PATH = str(PROJECT_ROOT / "data/splits/val.csv")
+DEFAULT_TEST_PATH = str(PROJECT_ROOT / "data/splits/test.csv")
+DEFAULT_SAVE_DIR = str(PROJECT_ROOT / "outputs/bilstm_cnn")
 TEXT_COLUMN: str = "clean_text"
 LABEL_COLUMN: str = "label"
 

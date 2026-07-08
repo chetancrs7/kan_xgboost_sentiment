@@ -10,8 +10,12 @@ import numpy as np
 import pandas as pd
 
 
-DEFAULT_INPUT_PATH = "data/processed/cleaned_tweets.csv"
-DEFAULT_OUTPUT_DIR = "data/splits"
+# Repo root (src/data/ -> parents[2]) so defaults resolve to the project's
+# data/ dir regardless of the launch directory (needed for cloud/HPC runs).
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+DEFAULT_INPUT_PATH = str(PROJECT_ROOT / "data/processed/cleaned_tweets.csv")
+DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "data/splits")
 DEFAULT_SEED = 42
 DEFAULT_TRAIN_SIZE = 0.80
 DEFAULT_VAL_SIZE = 0.10

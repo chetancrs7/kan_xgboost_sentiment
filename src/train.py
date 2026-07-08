@@ -43,10 +43,22 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import hydra
-from hydra.utils import to_absolute_path
 from omegaconf import DictConfig, OmegaConf
 
 VALID_STAGES = ("kan", "xgboost", "fusion", "static_fusion")
+
+
+def to_project_path(path: object) -> str:
+    """Resolve a (possibly relative) config path against the project root.
+
+    Unlike Hydra's ``to_absolute_path``, which anchors relative paths to the
+    directory the command was launched from, this anchors them to the
+    repository root derived from ``__file__``. That makes every path resolve to
+    the same location no matter where the job is launched -- essential on cloud
+    / HPC runners that start the process from an arbitrary working directory.
+    Absolute paths are returned unchanged.
+    """
+    return str((PROJECT_ROOT / str(path)).resolve())
 
 
 def _normalize_stages(raw: object) -> list[str]:
@@ -69,8 +81,8 @@ def run_kan(cfg: DictConfig) -> None:
 
     model_cfg, train_cfg = cfg.model.kan, cfg.train.kan
     kan_main(argparse.Namespace(
-        embeddings_dir=to_absolute_path(cfg.data.embeddings_dir),
-        output_dir=to_absolute_path(cfg.outputs.kan_dir),
+        embeddings_dir=to_project_path(cfg.data.embeddings_dir),
+        output_dir=to_project_path(cfg.outputs.kan_dir),
         # The KAN pipeline parses these two as comma-separated strings.
         hidden_dims=",".join(str(int(d)) for d in model_cfg.hidden_dims),
         grid_range=",".join(str(float(v)) for v in model_cfg.grid_range),
@@ -89,10 +101,10 @@ def run_kan(cfg: DictConfig) -> None:
         enable_spline_visualization=bool(train_cfg.get("enable_spline_visualization", True)),
         spline_viz_top_k=int(train_cfg.get("spline_viz_top_k", 8)),
         enable_tensorboard=bool(train_cfg.get("enable_tensorboard", False)),
-        spline_viz_dir=to_absolute_path(
+        spline_viz_dir=to_project_path(
             str(cfg.outputs.get("spline_viz_dir", "outputs/kan_spline_visualizations"))
         ),
-        tensorboard_dir=to_absolute_path(
+        tensorboard_dir=to_project_path(
             str(cfg.outputs.get("kan_tensorboard_dir", "outputs/tensorboard/kan"))
         ),
     ))
@@ -111,10 +123,10 @@ def run_xgboost(cfg: DictConfig) -> None:
             "hyperparameters; fixed values in the config are ignored."
         )
     xgb_main(argparse.Namespace(
-        train_path=to_absolute_path(cfg.data.splits.train),
-        val_path=to_absolute_path(cfg.data.splits.val),
-        test_path=to_absolute_path(cfg.data.splits.test),
-        output_dir=to_absolute_path(cfg.outputs.xgboost_dir),
+        train_path=to_project_path(cfg.data.splits.train),
+        val_path=to_project_path(cfg.data.splits.val),
+        test_path=to_project_path(cfg.data.splits.test),
+        output_dir=to_project_path(cfg.outputs.xgboost_dir),
         n_trials=n_trials,
         seed=int(cfg.seed),
         use_optuna=use_optuna,
@@ -128,9 +140,9 @@ def run_fusion(cfg: DictConfig) -> None:
 
     model_cfg, train_cfg = cfg.model.fusion, cfg.train.fusion
     fusion_main(argparse.Namespace(
-        inputs_dir=to_absolute_path(cfg.data.fusion.inputs_dir),
-        kan_dir=to_absolute_path(cfg.data.fusion.kan_dir),
-        output_dir=to_absolute_path(cfg.outputs.fusion_dir),
+        inputs_dir=to_project_path(cfg.data.fusion.inputs_dir),
+        kan_dir=to_project_path(cfg.data.fusion.kan_dir),
+        output_dir=to_project_path(cfg.outputs.fusion_dir),
         residual_bins=int(model_cfg.residual_bins),
         hidden_dim=int(model_cfg.hidden_dim),
         dropout=float(model_cfg.dropout),
@@ -159,8 +171,8 @@ def run_static_fusion(cfg: DictConfig) -> None:
     from sklearn.metrics import accuracy_score, f1_score
 
     weight = float(cfg.model.fusion.kan_weight)
-    inputs_dir = Path(to_absolute_path(cfg.data.fusion.inputs_dir))
-    kan_dir = Path(to_absolute_path(cfg.data.fusion.kan_dir))
+    inputs_dir = Path(to_project_path(cfg.data.fusion.inputs_dir))
+    kan_dir = Path(to_project_path(cfg.data.fusion.kan_dir))
 
     print("\n" + "=" * 64)
     print(f"STATIC FUSION EVALUATION (kan_weight={weight:g})")
@@ -180,7 +192,7 @@ def run_static_fusion(cfg: DictConfig) -> None:
             f"f1_macro={results[split]['f1_macro']:.4f}"
         )
 
-    output_dir = Path(to_absolute_path(cfg.outputs.fusion_dir))
+    output_dir = Path(to_project_path(cfg.outputs.fusion_dir))
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path = output_dir / f"static_fusion_w{weight:g}.json"
     out_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
@@ -193,16 +205,16 @@ def run_svm(cfg: DictConfig) -> None:
 
     model_cfg = cfg.model
     svm_main(argparse.Namespace(
-        train_path=to_absolute_path(cfg.data.splits.train),
-        val_path=to_absolute_path(cfg.data.splits.val),
-        test_path=to_absolute_path(cfg.data.splits.test),
+        train_path=to_project_path(cfg.data.splits.train),
+        val_path=to_project_path(cfg.data.splits.val),
+        test_path=to_project_path(cfg.data.splits.test),
         max_features=None if model_cfg.max_features is None else int(model_cfg.max_features),
         # The SVM pipeline parses this as a comma-separated string.
         c_values=",".join(str(float(c)) for c in model_cfg.c_values),
         class_weights=tuple(OmegaConf.to_container(model_cfg.class_weights, resolve=True)),
         scoring=str(model_cfg.scoring),
         random_state=int(cfg.seed),
-        plots_dir=str(Path(to_absolute_path(cfg.outputs.svm_dir)) / "plots"),
+        plots_dir=str(Path(to_project_path(cfg.outputs.svm_dir)) / "plots"),
     ))
 
 
@@ -212,15 +224,15 @@ def run_knn(cfg: DictConfig) -> None:
 
     model_cfg = cfg.model
     knn_main(argparse.Namespace(
-        train_path=to_absolute_path(cfg.data.splits.train),
-        val_path=to_absolute_path(cfg.data.splits.val),
-        test_path=to_absolute_path(cfg.data.splits.test),
+        train_path=to_project_path(cfg.data.splits.train),
+        val_path=to_project_path(cfg.data.splits.val),
+        test_path=to_project_path(cfg.data.splits.test),
         max_features=None if model_cfg.max_features is None else int(model_cfg.max_features),
         # The KNN pipeline parses this as a comma-separated string.
         k_values=",".join(str(int(k)) for k in model_cfg.k_values),
         weights=tuple(str(w) for w in model_cfg.weights),
         scoring=str(model_cfg.scoring),
-        plots_dir=str(Path(to_absolute_path(cfg.outputs.knn_dir)) / "plots"),
+        plots_dir=str(Path(to_project_path(cfg.outputs.knn_dir)) / "plots"),
     ))
 
 
@@ -230,11 +242,11 @@ def run_rf(cfg: DictConfig) -> None:
 
     model_cfg = cfg.model
     rf_main(argparse.Namespace(
-        train_path=to_absolute_path(cfg.data.splits.train),
-        val_path=to_absolute_path(cfg.data.splits.val),
-        test_path=to_absolute_path(cfg.data.splits.test),
+        train_path=to_project_path(cfg.data.splits.train),
+        val_path=to_project_path(cfg.data.splits.val),
+        test_path=to_project_path(cfg.data.splits.test),
         max_features=None if model_cfg.max_features is None else int(model_cfg.max_features),
-        save_dir=to_absolute_path(cfg.outputs.rf_dir),
+        save_dir=to_project_path(cfg.outputs.rf_dir),
         seed=int(cfg.seed),
     ))
 
@@ -245,13 +257,13 @@ def run_bilstm_cnn(cfg: DictConfig) -> None:
 
     model_cfg = cfg.model
     bilstm_cnn_main(argparse.Namespace(
-        train_path=to_absolute_path(cfg.data.splits.train),
-        val_path=to_absolute_path(cfg.data.splits.val),
-        test_path=to_absolute_path(cfg.data.splits.test),
+        train_path=to_project_path(cfg.data.splits.train),
+        val_path=to_project_path(cfg.data.splits.val),
+        test_path=to_project_path(cfg.data.splits.test),
         vocab_size=int(model_cfg.vocab_size),
         max_length=int(model_cfg.max_length),
         epochs=int(cfg.train.bilstm_cnn.epochs),
-        save_dir=to_absolute_path(cfg.outputs.bilstm_cnn_dir),
+        save_dir=to_project_path(cfg.outputs.bilstm_cnn_dir),
         seed=int(cfg.seed),
     ))
 

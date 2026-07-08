@@ -37,7 +37,8 @@ import numpy as np
 # src.models.xgboost.train`), and imported from the Hydra entry point
 # (`src/train.py`). Package-qualified imports avoid clashing with the
 # KAN expert's identically named data_loader/evaluate/model modules.
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 import joblib  # noqa: E402
 
@@ -63,7 +64,7 @@ from src.models.xgboost.model import (  # noqa: E402
     train_final_model,
 )
 
-DEFAULT_OUTPUT_DIR = "models/xgboost"
+DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "models/xgboost")
 DEFAULT_N_TRIALS = 50
 
 logging.basicConfig(

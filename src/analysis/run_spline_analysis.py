@@ -28,7 +28,8 @@ import numpy as np
 import torch
 
 # Project-root import shim, same pattern as the other entry points.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.analysis.spline_visualizer import (  # noqa: E402
     DEFAULT_OUTPUT_DIR,
@@ -44,7 +45,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--checkpoint",
-        default="models/kan/kan_model.pt",
+        default=str(PROJECT_ROOT / "models/kan/kan_model.pt"),
         help="Trained checkpoint saved by src/models/kan/train.py (default: %(default)s).",
     )
     parser.add_argument(

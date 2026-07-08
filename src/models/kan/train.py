@@ -41,7 +41,8 @@ from torch import nn
 # src.models.kan.train`), and imported from the Hydra entry point
 # (`src/train.py`). Package-qualified imports avoid clashing with the
 # XGBoost expert's identically named data_loader/evaluate/model modules.
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.models.kan.data_loader import (  # noqa: E402
     DEFAULT_EMBEDDINGS_DIR,
@@ -55,7 +56,9 @@ from src.models.kan.evaluate import (  # noqa: E402
 )
 from src.models.kan.model import DEFAULT_HIDDEN_DIMS, KANSentimentClassifier  # noqa: E402
 
-DEFAULT_OUTPUT_DIR = "models/kan"
+DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "models/kan")
+DEFAULT_SPLINE_VIZ_DIR = str(PROJECT_ROOT / "outputs/kan_spline_visualizations")
+DEFAULT_TENSORBOARD_DIR = str(PROJECT_ROOT / "outputs/tensorboard/kan")
 DEFAULT_EPOCHS = 200
 DEFAULT_BATCH_SIZE = 32
 DEFAULT_LR = 1e-3
@@ -123,7 +126,7 @@ def parse_args() -> argparse.Namespace:
     )
     viz.add_argument(
         "--spline-viz-dir",
-        default="outputs/kan_spline_visualizations",
+        default=DEFAULT_SPLINE_VIZ_DIR,
         help="Where the interpretability figures are written.",
     )
     viz.add_argument(
@@ -141,7 +144,7 @@ def parse_args() -> argparse.Namespace:
     )
     viz.add_argument(
         "--tensorboard-dir",
-        default="outputs/tensorboard/kan",
+        default=DEFAULT_TENSORBOARD_DIR,
         help="TensorBoard log directory (used with --enable-tensorboard).",
     )
     return parser.parse_args()
@@ -407,7 +410,7 @@ def main(args: argparse.Namespace | None = None) -> None:
             from src.analysis.tensorboard_logger import SplineTensorBoardLogger
 
             tb_logger = SplineTensorBoardLogger(
-                getattr(args, "tensorboard_dir", "outputs/tensorboard/kan")
+                getattr(args, "tensorboard_dir", DEFAULT_TENSORBOARD_DIR)
             )
         except Exception as exc:  # analysis extras must never block training
             print(f"[WARN] Could not set up TensorBoard spline logging: {exc}")
@@ -486,7 +489,7 @@ def main(args: argparse.Namespace | None = None) -> None:
                 model,
                 X=X_train[: min(len(X_train), 256)],
                 before_model=before_model,
-                output_dir=Path(getattr(args, "spline_viz_dir", "outputs/kan_spline_visualizations")),
+                output_dir=Path(getattr(args, "spline_viz_dir", DEFAULT_SPLINE_VIZ_DIR)),
                 top_k=int(getattr(args, "spline_viz_top_k", 8)),
             )
             print(f"[INFO] Spline interpretability report: {len(written)} files.")

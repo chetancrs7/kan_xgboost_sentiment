@@ -12,6 +12,10 @@ from urlextract import URLExtract
 
 from feature_extraction import EMOTICON_RE, add_all_features
 
+# Repo root (src/data/ -> parents[2]) so default paths resolve to the project's
+# data/ dir regardless of the launch directory (needed for cloud/HPC runs).
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 RAW_COLUMNS = ["target", "tweet_id", "date", "query", "user", "text"]
 LABEL_MAP = {0: 0, 4: 1}
 
@@ -136,8 +140,8 @@ def parse_args() -> PreprocessConfig:
     parser = argparse.ArgumentParser(
         description="Clean raw Sentiment140 tweets and save a processed CSV file."
     )
-    parser.add_argument("--raw-path", default="data/raw/sentiment140_dataset.csv")
-    parser.add_argument("--output-path", default="data/processed/cleaned_tweets.csv")
+    parser.add_argument("--raw-path", default=str(PROJECT_ROOT / "data/raw/sentiment140_dataset.csv"))
+    parser.add_argument("--output-path", default=str(PROJECT_ROOT / "data/processed/cleaned_tweets.csv"))
     parser.add_argument("--sample-size", type=int, default=None)
     parser.add_argument("--random-state", type=int, default=22)
     parser.add_argument("--with-features", action="store_true",

@@ -47,7 +47,11 @@ from src.fusion.utils import get_logger, resolve_device, save_json, set_seed
 
 logger = get_logger("fusion.trainer")
 
-DEFAULT_OUTPUT_DIR = "models/fusion"
+# Repo root (src/fusion/ -> parents[2]) so defaults resolve relative to the
+# project regardless of the launch directory (cloud/HPC-safe).
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "models/fusion")
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,8 +59,8 @@ def parse_args() -> argparse.Namespace:
         description="Train the residual-aware adaptive fusion gate."
     )
     # Data locations
-    parser.add_argument("--inputs-dir", default="data/fusion_inputs")
-    parser.add_argument("--kan-dir", default="models/kan_subset")
+    parser.add_argument("--inputs-dir", default=str(PROJECT_ROOT / "data/fusion_inputs"))
+    parser.add_argument("--kan-dir", default=str(PROJECT_ROOT / "models/kan_subset"))
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     # Feature construction
     parser.add_argument("--residual-bins", type=int, default=10)

@@ -16,7 +16,11 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-DEFAULT_EMBEDDINGS_DIR = "data/embeddings/deberta_v3_base"
+# Repo root (src/models/kan/ -> parents[3]) so the default resolves to the
+# project's data/ dir regardless of the launch directory (cloud/HPC-safe).
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+DEFAULT_EMBEDDINGS_DIR = str(PROJECT_ROOT / "data/embeddings/deberta_v3_base")
 SPLITS: tuple[str, ...] = ("train", "val", "test")
 
 

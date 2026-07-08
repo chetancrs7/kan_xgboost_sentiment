@@ -21,9 +21,13 @@ RAW_TEXT_COLUMN: str = "text"
 FALLBACK_TEXT_COLUMN: str = "clean_text"
 LABEL_COLUMN: str = "label"
 
-DEFAULT_TRAIN_PATH = "data/splits/train.csv"
-DEFAULT_VAL_PATH = "data/splits/val.csv"
-DEFAULT_TEST_PATH = "data/splits/test.csv"
+# Repo root (src/models/xgboost/ -> parents[3]) so defaults resolve to the
+# project's data/ dir regardless of the launch directory (cloud/HPC-safe).
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+DEFAULT_TRAIN_PATH = str(PROJECT_ROOT / "data/splits/train.csv")
+DEFAULT_VAL_PATH = str(PROJECT_ROOT / "data/splits/val.csv")
+DEFAULT_TEST_PATH = str(PROJECT_ROOT / "data/splits/test.csv")
 
 
 def _read_any(path: Path) -> pd.DataFrame:

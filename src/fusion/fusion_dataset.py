@@ -37,6 +37,12 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from src.models.xgboost.features import FeatureExtractor
 
+# Repo root (src/fusion/ -> parents[2]) so default paths resolve relative to the
+# project regardless of the launch directory (cloud/HPC-safe).
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_FUSION_INPUTS_DIR = str(PROJECT_ROOT / "data/fusion_inputs")
+DEFAULT_KAN_SUBSET_DIR = str(PROJECT_ROOT / "models/kan_subset")
+
 _EPS = 1e-12
 
 #: Linguistic features (by ``FeatureExtractor`` column name) fed to the gate.
@@ -435,8 +441,8 @@ def make_dataloader(
 # Input loading for the standard on-disk layout
 # --------------------------------------------------------------------------- #
 def load_fusion_inputs(
-    inputs_dir: Path | str = "data/fusion_inputs",
-    kan_dir: Path | str = "models/kan_subset",
+    inputs_dir: Path | str = DEFAULT_FUSION_INPUTS_DIR,
+    kan_dir: Path | str = DEFAULT_KAN_SUBSET_DIR,
     splits: tuple[str, ...] = ("train", "val", "test"),
 ) -> dict[str, dict[str, object]]:
     """Load the row-aligned artifacts produced by ``scripts/prepare_fusion_inputs.py``.

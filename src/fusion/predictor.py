@@ -47,6 +47,10 @@ from src.fusion.utils import get_logger, resolve_device, save_json
 
 logger = get_logger("fusion.predictor")
 
+# Repo root (src/fusion/ -> parents[2]) so CLI defaults resolve relative to the
+# project regardless of the launch directory (cloud/HPC-safe).
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 @dataclass
 class FusionOutputs:
@@ -237,10 +241,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run fusion inference from a saved checkpoint."
     )
-    parser.add_argument("--checkpoint", default="models/fusion/fusion_model.pt")
-    parser.add_argument("--inputs-dir", default="data/fusion_inputs")
-    parser.add_argument("--kan-dir", default="models/kan_subset")
-    parser.add_argument("--output-dir", default="models/fusion")
+    parser.add_argument("--checkpoint", default=str(PROJECT_ROOT / "models/fusion/fusion_model.pt"))
+    parser.add_argument("--inputs-dir", default=str(PROJECT_ROOT / "data/fusion_inputs"))
+    parser.add_argument("--kan-dir", default=str(PROJECT_ROOT / "models/kan_subset"))
+    parser.add_argument("--output-dir", default=str(PROJECT_ROOT / "models/fusion"))
     parser.add_argument("--split", default="test", choices=("val", "test"))
     parser.add_argument("--device", default=None)
     args = parser.parse_args()

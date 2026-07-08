@@ -43,7 +43,10 @@ from src.analysis.spline_extractor import (
     top_edges,
 )
 
-DEFAULT_OUTPUT_DIR = Path("outputs/kan_spline_visualizations")
+# Repo root (src/analysis/ -> parents[2]) so the default resolves relative to
+# the project regardless of the launch directory (cloud/HPC-safe).
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "outputs/kan_spline_visualizations"
 
 # Matplotlib rc settings applied (via rc_context, i.e. without leaking
 # global state into the training script's own plots) to every figure.
