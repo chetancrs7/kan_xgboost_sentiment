@@ -6,7 +6,10 @@ Execution flow
    processing, no embedding regeneration).
 2. Build a 4-layer adaptive-spline KAN
    (``SemanticCompressionLayer -> ContextInteractionLayer ->
-   SentimentDistortionLayer -> EmotionHotspotLayer``).
+   SentimentDistortionLayer -> EmotionHotspotLayer``), optionally followed by
+   a dedicated output head. Each layer's spline family is selectable via
+   ``--spline-types`` (bspline, cubic_bspline, thin_plate, rbf; see
+   ``src/models/kan/splines.py``).
 3. Train with cross-entropy loss, periodic spline-grid adaptation, and early
    stopping on validation loss.
 4. Evaluate train/val/test, export probabilities + entropy-based confidence.
@@ -20,6 +23,8 @@ Usage:
     python src/models/kan/train.py
     python src/models/kan/train.py --embeddings-dir data/embeddings/deberta_v3_base
     python src/models/kan/train.py --epochs 300 --patience 20 --hidden-dims 256,128,64
+    python src/models/kan/train.py --hidden-dims 256,128,64,32 --output-type linear \
+        --spline-types bspline,cubic_bspline,thin_plate,rbf
 """
 
 from __future__ import annotations
@@ -53,7 +58,12 @@ from src.models.kan.evaluate import (  # noqa: E402
     evaluate_split,
     logits_to_probs,
 )
-from src.models.kan.model import DEFAULT_HIDDEN_DIMS, KANSentimentClassifier  # noqa: E402
+from src.models.kan.model import (  # noqa: E402
+    DEFAULT_HIDDEN_DIMS,
+    DEFAULT_SPLINE_TYPES,
+    KANSentimentClassifier,
+)
+from src.models.kan.splines import SPLINE_REGISTRY  # noqa: E402
 
 DEFAULT_OUTPUT_DIR = "models/kan"
 DEFAULT_EPOCHS = 200
@@ -85,6 +95,29 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--grid-size", type=int, default=5, help="B-spline grid intervals.")
     parser.add_argument("--spline-order", type=int, default=3, help="B-spline polynomial degree.")
+    # --- Mixed-spline architecture (src/models/kan/splines.py) --------------
+    spline = parser.add_argument_group("mixed-spline architecture")
+    spline.add_argument(
+        "--spline-types",
+        default=",".join(DEFAULT_SPLINE_TYPES),
+        help="Comma-separated spline family per KAN layer (semantic_compression,"
+        "context_interaction,sentiment_distortion,emotion_hotspot). Available: "
+        + ", ".join(sorted(SPLINE_REGISTRY))
+        + " (default: %(default)s).",
+    )
+    spline.add_argument(
+        "--output-type",
+        default="none",
+        help="Optional dedicated output head ('linear' recommended). With a head, "
+        "--hidden-dims takes a 4th entry (emotion-hotspot width), e.g. '256,128,64,32'. "
+        "'none' keeps the original 4-layer architecture (default: %(default)s).",
+    )
+    spline.add_argument(
+        "--spline-params",
+        default=None,
+        help="Optional JSON list of 4 per-layer kwarg overrides, e.g. "
+        '\'[{}, {"grid_size": 8}, {}, {"num_centers": 10}]\'.',
+    )
     parser.add_argument(
         "--grid-range",
         default="-2,2",
@@ -145,6 +178,35 @@ def parse_args() -> argparse.Namespace:
         help="TensorBoard log directory (used with --enable-tensorboard).",
     )
     return parser.parse_args()
+
+
+def parse_spline_types(raw: str | list | tuple | None) -> tuple[str, ...]:
+    """Normalise ``--spline-types`` (comma string or sequence) to a 4-tuple."""
+    if raw is None:
+        return DEFAULT_SPLINE_TYPES
+    items = raw.split(",") if isinstance(raw, str) else list(raw)
+    types = tuple(str(s).strip().lower() for s in items if str(s).strip())
+    unknown = [t for t in types if t not in SPLINE_REGISTRY]
+    if unknown:
+        sys.exit(
+            f"[ERROR] Unknown spline type(s) {unknown}. "
+            f"Available: {', '.join(sorted(SPLINE_REGISTRY))}"
+        )
+    if len(types) != 4:
+        sys.exit(f"[ERROR] --spline-types needs exactly 4 entries, got {len(types)}: {types}")
+    return types
+
+
+def parse_spline_params(raw) -> tuple[dict, ...] | None:
+    """Normalise ``--spline-params`` (JSON string or list of dicts) or ``None``."""
+    if raw is None:
+        return None
+    params = json.loads(raw) if isinstance(raw, str) else list(raw)
+    if not isinstance(params, list) or len(params) != 4 or not all(
+        isinstance(p, dict) for p in params
+    ):
+        sys.exit("[ERROR] --spline-params must be a JSON list of exactly 4 objects.")
+    return tuple(params)
 
 
 def resolve_device(requested: str | None) -> torch.device:
@@ -320,6 +382,41 @@ def plot_training_curves(history: dict[str, list[float]], output_path: Path) -> 
     print(f"[INFO] Saved training curves to: {output_path.resolve()}")
 
 
+def plot_confusion_matrices(metrics: dict[str, Any], output_path: Path) -> None:
+    """Save side-by-side confusion-matrix heatmaps for every evaluated split."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    split_metrics = [
+        (name, m) for name, m in metrics.items()
+        if isinstance(m, dict) and "confusion_matrix" in m
+    ]
+    if not split_metrics:
+        return
+    fig, axes = plt.subplots(1, len(split_metrics), figsize=(4.2 * len(split_metrics), 4))
+    for ax, (split, m) in zip(np.atleast_1d(axes), split_metrics):
+        cm = np.asarray(m["confusion_matrix"])
+        ax.imshow(cm, cmap="Blues")
+        for (row, col), count in np.ndenumerate(cm):
+            ax.text(
+                col, row, f"{count:,}", ha="center", va="center",
+                color="white" if count > cm.max() / 2 else "black",
+            )
+        n = cm.shape[0]
+        ax.set_xticks(range(n))
+        ax.set_yticks(range(n))
+        ax.set_xlabel("Predicted class")
+        ax.set_ylabel("True class")
+        ax.set_title(f"{split} (acc={m['accuracy']:.4f})")
+    fig.suptitle("KAN Sentiment Classifier — Confusion Matrices")
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    print(f"[INFO] Saved confusion matrices to: {output_path.resolve()}")
+
+
 def save_artifacts(
     output_dir: Path,
     model: nn.Module,
@@ -344,8 +441,9 @@ def save_artifacts(
     for split, array in confidence.items():
         np.save(output_dir / f"{split}_confidence.npy", array)
 
-    # Training curves.
+    # Training curves + confusion matrices.
     plot_training_curves(history, output_dir / "training_curves.png")
+    plot_confusion_matrices(metrics, output_dir / "confusion_matrices.png")
 
     # Per-epoch history (backing data for the plot).
     (output_dir / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
@@ -376,8 +474,14 @@ def main(args: argparse.Namespace | None = None) -> None:
     loaders = build_dataloaders(splits, batch_size=args.batch_size, seed=args.seed)
 
     # 2. Build the 4-layer adaptive-spline KAN -----------------------------
+    # getattr defaults keep this compatible with callers passing a bare
+    # Namespace without the mixed-spline flags (e.g. the Hydra entry point
+    # before it learned about them, or older scripts).
     hidden_dims = tuple(int(d) for d in args.hidden_dims.split(","))
     grid_range = tuple(float(v) for v in args.grid_range.split(","))
+    spline_types = parse_spline_types(getattr(args, "spline_types", None))
+    spline_params = parse_spline_params(getattr(args, "spline_params", None))
+    output_type = str(getattr(args, "output_type", "none") or "none").strip().lower()
     model_config = {
         "input_dim": input_dim,
         "hidden_dims": hidden_dims,
@@ -385,11 +489,16 @@ def main(args: argparse.Namespace | None = None) -> None:
         "grid_size": args.grid_size,
         "spline_order": args.spline_order,
         "grid_range": grid_range,
+        "spline_types": spline_types,
+        "spline_params": spline_params,
+        "output_type": None if output_type == "none" else output_type,
     }
     model = KANSentimentClassifier(**model_config).to(device)
+    dims_str = " -> ".join(str(d) for d in (input_dim, *hidden_dims, n_classes))
     print(
-        f"[INFO] Built KANSentimentClassifier: {input_dim} -> {hidden_dims[0]} -> "
-        f"{hidden_dims[1]} -> {hidden_dims[2]} -> {n_classes}"
+        f"[INFO] Built KANSentimentClassifier: {dims_str} | "
+        f"splines: {', '.join(spline_types)}"
+        + (f" | output head: {output_type}" if output_type != "none" else "")
     )
 
     # 2b. Optional spline interpretability hooks (src/analysis) -------------
@@ -458,7 +567,11 @@ def main(args: argparse.Namespace | None = None) -> None:
         confidence[split_name] = confidence_from_entropy(split_probs)
         metrics[split_name] = evaluate_split(split_probs, y, split_name, n_classes)
 
-    metrics["model"] = "KAN (adaptive-spline, DeBERTa embeddings)"
+    metrics["model"] = (
+        f"KAN (adaptive splines: {'+'.join(spline_types)}"
+        + (f", output={output_type}" if output_type != "none" else "")
+        + ", DeBERTa embeddings)"
+    )
     metrics["n_classes"] = n_classes
     metrics["best_val_loss"] = history["best_val_loss"]
     metrics["stopped_epoch"] = history["stopped_epoch"]

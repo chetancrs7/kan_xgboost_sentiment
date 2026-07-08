@@ -80,6 +80,9 @@ def evaluate_split(
     macro_precision, macro_recall, macro_f1, _ = precision_recall_fscore_support(
         y_true, y_pred, average="macro", zero_division=0
     )
+    weighted_precision, weighted_recall, weighted_f1, _ = precision_recall_fscore_support(
+        y_true, y_pred, average="weighted", zero_division=0
+    )
     auc = _safe_auc(np.asarray(y_true), probs, n_classes)
     cm = confusion_matrix(y_true, y_pred)
     confidence = confidence_from_entropy(probs)
@@ -94,6 +97,9 @@ def evaluate_split(
         "macro_precision": float(macro_precision),
         "macro_recall": float(macro_recall),
         "macro_f1": float(macro_f1),
+        "weighted_precision": float(weighted_precision),
+        "weighted_recall": float(weighted_recall),
+        "weighted_f1": float(weighted_f1),
         "auc": auc,
         "mean_confidence": float(np.mean(confidence)),
         "confusion_matrix": cm.tolist(),
@@ -102,7 +108,8 @@ def evaluate_split(
     auc_str = f"{auc:.4f}" if auc is not None else "n/a"
     print(
         f"[{split_name.upper()}] acc={accuracy:.4f} | precision={precision:.4f} | "
-        f"recall={recall:.4f} | f1={f1:.4f} | auc={auc_str} | "
+        f"recall={recall:.4f} | f1={f1:.4f} | macro_f1={macro_f1:.4f} | "
+        f"weighted_f1={weighted_f1:.4f} | auc={auc_str} | "
         f"mean_confidence={metrics['mean_confidence']:.4f}"
     )
     return metrics
