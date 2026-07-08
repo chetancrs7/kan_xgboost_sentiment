@@ -305,7 +305,9 @@ def plot_feature_response(
     was_training = model.training
     model.eval()
     mean_vector = X.mean(axis=0)
-    n_classes = model.emotion_hotspot.out_dim
+    # The logits come from the last layer of the stack -- the emotion-hotspot
+    # layer in the original 4-layer model, the output head in mixed models.
+    n_classes = model.layers[-1].out_dim
 
     with plt.rc_context(PUBLICATION_RC):
         fig, axes = _grid_of_axes(len(dims), panel=(3.4, 2.5))
@@ -354,7 +356,7 @@ def plot_layer_comparison(model, path: Path, edges_per_layer: int = 3) -> Path:
     structure is carved out. Curves are each layer's top edges by spline
     strength, so panels are representative rather than exhaustive.
     """
-    layers = list(iter_kan_layers(model))
+    layers = [(n, w, kl) for n, w, kl in iter_kan_layers(model) if kl is not None]
     with plt.rc_context(PUBLICATION_RC):
         fig, axes = plt.subplots(1, len(layers), figsize=(3.2 * len(layers), 2.8))
         for ax, (name, _wrapper, kan_layer) in zip(np.atleast_1d(axes), layers):
@@ -432,7 +434,12 @@ def generate_all_visualizations(
     written: list[Path] = []
     summary: dict[str, object] = {"synthetic_inputs": synthetic, "n_samples": int(len(X))}
 
-    for layer_idx, (name, _wrapper, kan_layer) in enumerate(iter_kan_layers(model)):
+    for layer_idx, (name, wrapper, kan_layer) in enumerate(iter_kan_layers(model)):
+        if kan_layer is None:
+            # Mixed-spline models: RBF/thin-plate layers have no B-spline
+            # knots/coefficients, so the per-layer figures do not apply.
+            summary[name] = {"skipped": type(wrapper).__name__}
+            continue
         title = LAYER_TITLES[name]
         subdir = output_dir / f"layer{layer_idx + 1}_{name}"
         dims = select_top_k_dims(importances[layer_idx], k=top_k)
@@ -468,7 +475,8 @@ def generate_all_visualizations(
     written.append(
         plot_feature_response(model, X, response_dims, output_dir / "input_feature_response.png")
     )
-    written.append(plot_layer_comparison(model, output_dir / "layer_comparison.png"))
+    if any(kl is not None for _, _, kl in iter_kan_layers(model)):
+        written.append(plot_layer_comparison(model, output_dir / "layer_comparison.png"))
 
     summary_path = output_dir / "selected_dimensions.json"
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")

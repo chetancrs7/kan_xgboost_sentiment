@@ -76,6 +76,12 @@ def run_kan(cfg: DictConfig) -> None:
         grid_range=",".join(str(float(v)) for v in model_cfg.grid_range),
         grid_size=int(model_cfg.grid_size),
         spline_order=int(model_cfg.spline_order),
+        # Mixed-spline architecture. .get() defaults keep older model/*.yaml
+        # files without these keys behaving exactly as before (all B-spline,
+        # no separate output head).
+        spline_types=",".join(str(s) for s in model_cfg.get("spline_types", ["bspline"] * 4)),
+        output_type=str(model_cfg.get("output_type", "none")),
+        spline_params=None,
         epochs=int(train_cfg.epochs),
         batch_size=int(train_cfg.batch_size),
         lr=float(train_cfg.lr),

@@ -88,6 +88,8 @@ class SplineTensorBoardLogger:
             from src.analysis.spline_extractor import iter_kan_layers
 
             for name, _wrapper, kan_layer in iter_kan_layers(model):
+                if kan_layer is None:  # non-B-spline layer in a mixed-spline model
+                    continue
                 self._writer.add_histogram(
                     f"spline_coefficients/{name}", kan_layer.coef.detach().cpu(), epoch
                 )
@@ -114,6 +116,8 @@ class SplineTensorBoardLogger:
         from src.analysis.spline_visualizer import PUBLICATION_RC, edge_curves_figure
 
         for name, _wrapper, kan_layer in iter_kan_layers(model):
+            if kan_layer is None:  # non-B-spline layer in a mixed-spline model
+                continue
             edges = top_edges(kan_layer, k=self.top_k)
             with plt.rc_context(PUBLICATION_RC):
                 fig = edge_curves_figure(kan_layer, LAYER_TITLES[name], edges)

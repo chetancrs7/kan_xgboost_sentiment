@@ -61,15 +61,21 @@ MAX_FORWARD_SAMPLES = 256
 MAX_GRADIENT_SAMPLES = 128
 
 
-def iter_kan_layers(model) -> Iterator[tuple[str, torch.nn.Module, torch.nn.Module]]:
+def iter_kan_layers(model) -> Iterator[tuple[str, torch.nn.Module, torch.nn.Module | None]]:
     """Yield ``(name, wrapper, pykan_layer)`` for each of the four KAN layers.
 
     ``wrapper`` is the project's ``AdaptiveSplineKANLayer``; ``pykan_layer``
     is the underlying ``kan.KANLayer`` holding ``grid`` / ``coef`` / scales.
+
+    Mixed-spline models (see ``src/models/kan/splines.py``) may use non-
+    B-spline layers (RBF, thin-plate, linear head); those have no pykan layer
+    and yield ``None`` in its place, keeping positions aligned with
+    ``LAYER_NAMES`` -- consumers must skip ``None`` entries. B-spline-specific
+    figures are simply not produced for such layers.
     """
     for name in LAYER_NAMES:
         wrapper = getattr(model, name)
-        yield name, wrapper, wrapper.kan_layer
+        yield name, wrapper, getattr(wrapper, "kan_layer", None)
 
 
 # ---------------------------------------------------------------------------
@@ -274,8 +280,16 @@ def layer_importances(model, x: torch.Tensor) -> list[dict[str, np.ndarray]]:
         captured = forward_capture(model, x)
         for layer_idx, (_name, _wrapper, kan_layer) in enumerate(iter_kan_layers(model)):
             layer_input = captured["layer_inputs"][layer_idx]
+            # Non-B-spline layers (RBF/thin-plate in mixed-spline models) have
+            # no pykan coefficients; score them on the data-dependent measures
+            # only, with zero spline mass.
+            coef_magnitude = (
+                edge_strengths(kan_layer).mean(axis=1)
+                if kan_layer is not None
+                else np.zeros(layer_input.shape[1])
+            )
             results.append({
-                "coef_magnitude": edge_strengths(kan_layer).mean(axis=1),
+                "coef_magnitude": coef_magnitude,
                 "activation_variance": layer_input.var(dim=0).cpu().numpy(),
                 "gradient": grads[layer_idx].abs().mean(dim=0).cpu().numpy(),
             })
