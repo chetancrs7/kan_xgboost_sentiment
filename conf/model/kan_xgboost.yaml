@@ -5,8 +5,19 @@
 name: kan_xgboost
 
 kan:
-  # Widths of the three hidden adaptive-spline layers.
+  # Widths of the hidden adaptive-spline layers. Three entries when
+  # output_type is 'none'; four (the last being the emotion-hotspot width,
+  # e.g. [256, 128, 64, 32]) when a separate output head is enabled.
   hidden_dims: [256, 128, 64]
+  # Spline family per KAN layer, in forward order (semantic_compression,
+  # context_interaction, sentiment_distortion, emotion_hotspot). Available:
+  # bspline, cubic_bspline, thin_plate, rbf (see src/models/kan/splines.py).
+  # The all-bspline default reproduces the original architecture exactly.
+  spline_types: [bspline, bspline, bspline, bspline]
+  # 'none' (emotion_hotspot emits the logits, original behaviour) or a
+  # registry name -- typically 'linear' -- for a dedicated low-capacity
+  # classification head.
+  output_type: none
   # B-spline grid intervals per activation.
   grid_size: 5
   # B-spline polynomial degree.
