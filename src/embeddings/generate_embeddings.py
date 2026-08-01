@@ -28,10 +28,14 @@ from config import (
     DEFAULT_MAX_LENGTH,
     DEFAULT_MODEL_NAME,
     DEFAULT_OUTPUT_DIR,
+    DEFAULT_POOLING,
     DEFAULT_SEED,
+    DEFAULT_TEXT_COLUMN,
+    POOLING_STRATEGIES,
     SPLIT_FILENAMES,
     EmbeddingConfig,
     configure_logging,
+    load_embedding_methods,
     set_seed,
 )
 from embedding_generator import EmbeddingGenerator
@@ -95,26 +99,76 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Generate DeBERTa-v3 sentence embeddings for train/val/test splits."
     )
-    parser.add_argument("--model-name", default=DEFAULT_MODEL_NAME, help="HuggingFace model id (default: %(default)s).")
+    parser.add_argument(
+        "--method",
+        default=None,
+        help="Named embedding preset from conf/embeddings.yaml (e.g. 'deberta', "
+        "'bertweet'). Fills in model/pooling/text-column defaults; any explicit "
+        "flag below still overrides it. Omit to use the flags directly (default "
+        "behaviour, unchanged).",
+    )
+    parser.add_argument("--model-name", default=None, help=f"HuggingFace model id (default: preset or {DEFAULT_MODEL_NAME}).")
+    parser.add_argument("--tokenizer-name", default=None,
+                        help="Load the tokenizer from here instead of --model-name "
+                        "(preset default; BERTweet needs the hub base tokenizer).")
+    parser.add_argument("--text-column", default=None, help=f"Text column to embed (default: preset or '{DEFAULT_TEXT_COLUMN}').")
     parser.add_argument("--data-dir", default=DEFAULT_DATA_DIR, help="Directory holding the split CSVs (default: %(default)s).")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, help="Directory for the output .npy files (default: %(default)s).")
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE, help="Inference batch size (default: %(default)s).")
     parser.add_argument("--max-length", type=int, default=DEFAULT_MAX_LENGTH, help="Max token length per text (default: %(default)s).")
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help="Random seed for reproducibility (default: %(default)s).")
     parser.add_argument("--device", default=None, help="Force a device, e.g. 'cuda' or 'cpu' (default: auto-detect).")
+    parser.add_argument(
+        "--pooling",
+        default=None,
+        choices=POOLING_STRATEGIES,
+        help="Sentence pooling: 'mean' (default), 'cls' (first-token vector), or "
+        "'pooler' (fine-tuned ContextPooler output; needs a sequence-"
+        "classification checkpoint). Use 'cls'/'pooler' to match a fine-tuned "
+        "encoder (default: %(default)s).",
+    )
     return parser.parse_args()
+
+
+def resolve_method(args: argparse.Namespace) -> dict:
+    """Merge a named ``--method`` preset with explicit flags (flags win)."""
+    preset: dict = {}
+    if args.method is not None:
+        methods = load_embedding_methods()
+        preset = methods.get(args.method)
+        if preset is None:
+            sys.exit(
+                f"[ERROR] Unknown --method '{args.method}'. "
+                f"Available: {sorted(methods)}. Add more in conf/embeddings.yaml."
+            )
+    return {
+        "model_name": args.model_name or preset.get("model_name") or DEFAULT_MODEL_NAME,
+        "tokenizer_name": args.tokenizer_name or preset.get("tokenizer_name"),
+        "pooling": args.pooling or preset.get("pooling") or DEFAULT_POOLING,
+        "text_column": args.text_column or preset.get("text_column") or DEFAULT_TEXT_COLUMN,
+        "tokenizer_kwargs": dict(preset.get("tokenizer_kwargs", {})),
+    }
 
 
 def main() -> None:
     args = parse_args()
+    resolved = resolve_method(args)
     config = EmbeddingConfig(
-        model_name=args.model_name,
+        model_name=resolved["model_name"],
         data_dir=args.data_dir,
         output_dir=args.output_dir,
+        text_column=resolved["text_column"],
         batch_size=args.batch_size,
         max_length=args.max_length,
         seed=args.seed,
+        pooling=resolved["pooling"],
+        tokenizer_name=resolved["tokenizer_name"],
+        tokenizer_kwargs=resolved["tokenizer_kwargs"],
         device=args.device,
+    )
+    logger.info(
+        "Embedding method: %s | model=%s | pooling=%s | text_column=%s",
+        args.method or "(flags)", config.model_name, config.pooling, config.text_column,
     )
 
     set_seed(config.seed)

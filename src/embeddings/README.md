@@ -65,6 +65,49 @@ These `.npy` files become the shared input for all subsequent machine learning m
 
 ---
 
+# Choosing an encoder (`--method`)
+
+Named presets let you switch encoders without spelling out every flag. Presets
+live in [`conf/embeddings.yaml`](../../conf/embeddings.yaml) (optional; built-in
+defaults in `config.py` are used if it's missing):
+
+| `--method` | Encoder | Reads | Notes |
+|---|---|---|---|
+| *(omit)* | whatever `--model-name` says | `--text-column` | **default, unchanged** |
+| `deberta` | `microsoft/deberta-v3-base` | `clean_text` | the existing path |
+| `bertweet` | `vinai/bertweet-base` | `text` (raw) | RoBERTa pretrained on ~850M tweets — domain-matched |
+| `bertweet-large` | `vinai/bertweet-large` | `text` (raw) | 1024-dim (KAN input dim auto-adjusts) |
+
+```bash
+python src/embeddings/generate_embeddings.py --method bertweet \
+    --data-dir data/splitsfull --output-dir data/embeddings_bertweet
+```
+
+A preset only supplies **defaults** — any explicit `--model-name`, `--pooling`,
+or `--text-column` still wins. Omitting `--method` leaves behaviour exactly as
+before. BERTweet reads the **raw** `text` column (it has its own tweet-aware
+tokenizer) and needs `use_fast: false` (handled by the preset).
+
+# Pooling strategy (`--pooling`)
+
+Token vectors are reduced to one sentence vector by a configurable strategy:
+
+| `--pooling` | What it extracts | When to use |
+|---|---|---|
+| `mean` (default) | masked mean over all tokens | any encoder; a good generic default |
+| `cls` | the first-token (`[CLS]`) last-hidden vector | a **fine-tuned** encoder — the token its classification head reads from |
+| `pooler` | the fine-tuned **ContextPooler** output (the exact vector the trained classifier consumes) | maximal alignment with a fine-tuned sequence-classification checkpoint |
+
+**Why it matters:** a model fine-tuned with `AutoModelForSequenceClassification`
+is optimized through its `[CLS]`/ContextPooler path, **not** mean pooling. Extracting
+mean-pooled vectors from such a model is a representation mismatch. Use `--pooling
+pooler` (or `cls`) with a fine-tuned checkpoint so the embeddings match what training
+actually shaped. `pooler` requires a checkpoint that has a pooler head; it falls back
+to `cls` with a warning otherwise. All three keep the 768-d width, so downstream models
+are unchanged.
+
+---
+
 # File 1: config.py
 
 ## Purpose
