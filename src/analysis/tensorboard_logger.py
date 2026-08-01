@@ -78,6 +78,21 @@ class SplineTensorBoardLogger:
         except Exception as exc:  # noqa: BLE001
             self._disable(f"scalar logging failed ({exc})")
 
+    def log_step_metrics(self, step: int, metrics: dict[str, float]) -> None:
+        """Log mid-epoch validation scalars under ``kan_steps/<name>``.
+
+        Uses the optimizer step as the x-axis, so on large datasets the
+        within-epoch learning trajectory is visible alongside the per-epoch
+        ``kan/…`` curves.
+        """
+        if not self.enabled:
+            return
+        try:
+            for name, value in metrics.items():
+                self._writer.add_scalar(f"kan_steps/{name}", float(value), step)
+        except Exception as exc:  # noqa: BLE001
+            self._disable(f"step scalar logging failed ({exc})")
+
     def log_spline_state(self, model, epoch: int) -> None:
         """Log spline internals: coefficient/scale histograms, grid ranges, curves."""
         if not self.enabled:
