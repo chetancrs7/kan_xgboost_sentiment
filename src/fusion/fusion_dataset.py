@@ -243,9 +243,16 @@ class FusionSplit:
     feature_names: list[str] = field(default_factory=list)
     source_rows: np.ndarray | None = None  # indices into the original split CSV
     texts: list[str] | None = None
+    embeddings: np.ndarray | None = None  # [n, D] DeBERTa embeddings (for fallback OOD)
 
     def __len__(self) -> int:
         return len(self.labels)
+
+    def residual_column(self, name: str) -> np.ndarray | None:
+        """Return a meta-feature column by name (e.g. ``kan_expected_residual``)."""
+        if name not in self.feature_names:
+            return None
+        return self.features[:, self.feature_names.index(name)]
 
 
 # --------------------------------------------------------------------------- #
@@ -267,7 +274,10 @@ class FusionFeatureBuilder:
 
     def __init__(self, n_residual_bins: int = 10, text_column: str = "text") -> None:
         self.text_column = text_column
-        self._extractor = FeatureExtractor()
+        # The gate only consumes the front lexical columns (LINGUISTIC_FEATURES),
+        # so skip the heavy spaCy dependency pass here; the XGBoost expert still
+        # gets the full feature set from its own FeatureExtractor instance.
+        self._extractor = FeatureExtractor(use_spacy_dep=False)
         self._extractor.fit([])
         self._ling_idx = {
             name: self._extractor.feature_names_.index(name)
@@ -299,6 +309,7 @@ class FusionFeatureBuilder:
         embeddings: np.ndarray,
         kan_probs: np.ndarray,
         xgb_probs: np.ndarray,
+        aux_fail: np.ndarray | None = None,
     ) -> FusionSplit:
         """Build the fusion feature matrix for one split.
 
@@ -309,6 +320,10 @@ class FusionFeatureBuilder:
             embeddings: DeBERTa embeddings aligned with ``df`` rows.
             kan_probs: KAN expert probabilities aligned with ``df`` rows.
             xgb_probs: XGBoost expert probabilities aligned with ``df`` rows.
+            aux_fail: Optional ``[n]`` per-sample signal in ``[0, 1]`` — the
+                KAN aux head's estimate of P(XGBoost fails). When given it is
+                appended as an extra gate feature (``kan_pred_xgb_fail``);
+                ``None`` reproduces the original feature set exactly.
 
         Returns:
             A :class:`FusionSplit` with unscaled features.
@@ -374,6 +389,17 @@ class FusionFeatureBuilder:
         columns.append(("xgb_expected_residual", xgb_res))
         columns.append(("expected_residual_gap", kan_res - xgb_res))
 
+        # --- Optional learned competence signal ------------------------------
+        # The KAN aux head's P(XGBoost fails), a per-sample estimate that is
+        # complementary to the confidence-binned residual proxies above.
+        if aux_fail is not None:
+            aux_fail = np.asarray(aux_fail, dtype=np.float64).reshape(-1)
+            if len(aux_fail) != len(labels):
+                raise ValueError(
+                    f"{name}: aux_fail ({len(aux_fail)}) misaligned with rows ({len(labels)})."
+                )
+            columns.append(("kan_pred_xgb_fail", aux_fail))
+
         names = [c[0] for c in columns]
         features = np.column_stack([c[1] for c in columns]).astype(np.float64)
         if not np.isfinite(features).all():
@@ -391,6 +417,7 @@ class FusionFeatureBuilder:
                 df["source_row"].to_numpy() if "source_row" in df.columns else None
             ),
             texts=texts,
+            embeddings=embeddings,
         )
 
     @staticmethod
@@ -467,4 +494,10 @@ def load_fusion_inputs(
             "kan_probs": np.load(paths["kan_probs"]),
             "xgb_probs": np.load(paths["xgb_probs"]),
         }
+        # Optional KAN aux competence signal (present only when the KAN was
+        # trained with --aux-failure-head and the signal was exported). Loaded
+        # when available so the gate can use it; absent keeps prior behaviour.
+        aux_path = kan_dir / f"{split}_xgb_fail_prob.npy"
+        if aux_path.exists():
+            out[split]["aux_fail"] = np.load(aux_path)
     return out

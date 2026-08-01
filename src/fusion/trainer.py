@@ -41,6 +41,8 @@ from src.fusion.fusion_dataset import (
     load_fusion_inputs,
     make_dataloader,
 )
+from src.fusion.calibration import TemperatureScaler
+from src.fusion.fallback import FallbackConfig, UncertaintyFallback
 from src.fusion.fusion_model import FusionGate, fused_cross_entropy
 from src.fusion.predictor import FusionPredictor, evaluate_and_export
 from src.fusion.utils import get_logger, resolve_device, save_json, set_seed
@@ -78,6 +80,51 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scheduler-patience", type=int, default=10)
     parser.add_argument("--scheduler-factor", type=float, default=0.5)
     parser.add_argument("--min-lr", type=float, default=1e-6)
+    # Uncertainty-aware fallback
+    parser.add_argument(
+        "--enable-fallback",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Fit the uncertainty-aware fallback layer and apply it at "
+        "evaluation (disable with --no-enable-fallback).",
+    )
+    parser.add_argument(
+        "--fallback-temperature",
+        type=float,
+        default=2.0,
+        help="Softmax temperature (>1) used by the conservative fallback branch.",
+    )
+    parser.add_argument(
+        "--fallback-apply-overrides",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Let the fallback override predictions (abstain/route/soften). Off by "
+        "default: the fallback only flags risky samples and never lowers accuracy.",
+    )
+    parser.add_argument(
+        "--calibrate-experts",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Temperature-scale each expert's probabilities (fit on val) before "
+        "the gate, so the confidence signals it relies on are well-calibrated.",
+    )
+    # Expert-balance regularisation (give the structural expert more weight).
+    parser.add_argument(
+        "--alpha-reg-weight",
+        type=float,
+        default=0.0,
+        help="Load-balancing penalty pushing the gate's mean trust toward "
+        "--alpha-target, so it leans less on the dominant expert (default 0.0 = "
+        "off, accuracy-optimal). Larger = the structural (XGBoost) expert gets "
+        "more weight, trading a little accuracy. Try 0.1-1.0.",
+    )
+    parser.add_argument(
+        "--alpha-target",
+        type=float,
+        default=0.5,
+        help="Target mean gate value alpha for --alpha-reg-weight (0.5 = balanced "
+        "KAN/XGBoost; lower favours XGBoost, higher favours the KAN).",
+    )
     # Environment
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default=None)
@@ -111,6 +158,7 @@ def subset_split(split: FusionSplit, idx: np.ndarray, name: str) -> FusionSplit:
         feature_names=split.feature_names,
         source_rows=None if split.source_rows is None else split.source_rows[idx],
         texts=None if split.texts is None else [split.texts[i] for i in idx],
+        embeddings=None if split.embeddings is None else split.embeddings[idx],
     )
 
 
@@ -155,6 +203,16 @@ def train_gate(
         min_lr=args.min_lr,
     )
 
+    # Optional expert-balance regularisation (default off -> behaviour unchanged).
+    alpha_reg_weight = float(getattr(args, "alpha_reg_weight", 0.0))
+    alpha_target = float(getattr(args, "alpha_target", 0.5))
+    if alpha_reg_weight > 0:
+        logger.info(
+            "Alpha-balance regularisation ON: weight=%.3f target=%.2f "
+            "(pushes the gate to give XGBoost more weight).",
+            alpha_reg_weight, alpha_target,
+        )
+
     history: dict[str, list[float]] = {
         "train_loss": [], "train_acc": [], "holdout_loss": [], "holdout_acc": [],
     }
@@ -173,6 +231,12 @@ def train_gate(
             optimizer.zero_grad()
             alpha = model(features)
             loss = fused_cross_entropy(alpha, kan_probs, xgb_probs, labels)
+            if alpha_reg_weight > 0:
+                # Penalise the batch mean trust for straying from the target, so
+                # the gate spreads weight onto the structural expert instead of
+                # collapsing onto the dominant one. Per-sample discrimination is
+                # preserved (only the mean is constrained).
+                loss = loss + alpha_reg_weight * (alpha.mean() - alpha_target) ** 2
             loss.backward()
             optimizer.step()
 
@@ -248,6 +312,24 @@ def main(args: argparse.Namespace | None = None) -> None:
     # 1. Load row-aligned expert outputs -----------------------------------
     inputs = load_fusion_inputs(args.inputs_dir, args.kan_dir)
 
+    # 1b. Calibrate each expert's probabilities (temperature scaling, fit on
+    # val) so the confidence/entropy signals the gate depends on are honest.
+    # Applied to every split before any feature is built, so the whole pipeline
+    # (residuals, meta-features, fusion, fallback) sees calibrated probabilities.
+    kan_temp, xgb_temp = TemperatureScaler(), TemperatureScaler()
+    if args.calibrate_experts:
+        val_labels = inputs["val"]["df"]["label"].to_numpy(dtype=np.int64)
+        kan_temp.fit(inputs["val"]["kan_probs"], val_labels)
+        xgb_temp.fit(inputs["val"]["xgb_probs"], val_labels)
+        for split_inputs in inputs.values():
+            split_inputs["kan_probs"] = kan_temp.transform(split_inputs["kan_probs"])
+            split_inputs["xgb_probs"] = xgb_temp.transform(split_inputs["xgb_probs"])
+        logger.info(
+            "Calibrated experts (temperature scaling): T_kan=%.3f  T_xgb=%.3f "
+            "(>1 = softened an over-confident expert).",
+            kan_temp.temperature, xgb_temp.temperature,
+        )
+
     # 2. Build fusion features ----------------------------------------------
     # Residual history comes from the experts' TRAIN split; the gate itself
     # never sees that split, so residual features stay leak-free.
@@ -264,9 +346,12 @@ def main(args: argparse.Namespace | None = None) -> None:
             inputs[name]["embeddings"],
             inputs[name]["kan_probs"],
             inputs[name]["xgb_probs"],
+            aux_fail=inputs[name].get("aux_fail"),
         )
         for name in ("val", "test")
     }
+    if "aux_fail" in inputs["val"]:
+        logger.info("Using KAN aux competence signal as an extra gate feature.")
     logger.info(
         "Fusion features: %d columns | val=%d test=%d",
         splits["val"].features.shape[1], len(splits["val"]), len(splits["test"]),
@@ -325,6 +410,11 @@ def main(args: argparse.Namespace | None = None) -> None:
             "kan": builder.kan_residuals.state_dict(),
             "xgb": builder.xgb_residuals.state_dict(),
         },
+        "calibration": {
+            "enabled": bool(args.calibrate_experts),
+            "kan": kan_temp.state_dict(),
+            "xgb": xgb_temp.state_dict(),
+        },
         "feature_names": gate_train.feature_names,
         "text_column": builder.text_column,
         "train_args": vars(args),
@@ -344,8 +434,38 @@ def main(args: argparse.Namespace | None = None) -> None:
         output_dir / "training_history.json",
     )
 
-    # 6. Final evaluation + artifact export on the untouched test split -----
+    # 5b. Fit the uncertainty-aware fallback and fold it into the checkpoint -
+    # Thresholds are calibrated on the gate-holdout split (never on test), the
+    # OOD detector is fit on the experts' TRAIN embeddings (in-distribution
+    # reference), so nothing about the test split leaks into the fallback.
     predictor = FusionPredictor.from_checkpoint(checkpoint_path, device=device)
+    if args.enable_fallback:
+        holdout_outputs = predictor.predict(gate_holdout)
+        fallback = UncertaintyFallback(
+            FallbackConfig(
+                conservative_temperature=args.fallback_temperature,
+                apply_overrides=args.fallback_apply_overrides,
+            )
+        )
+        fallback.fit(
+            train_embeddings=inputs["train"]["embeddings"],
+            holdout_fused_probs=holdout_outputs.fused_probs,
+            holdout_kan_probs=gate_holdout.kan_probs,
+            holdout_xgb_probs=gate_holdout.xgb_probs,
+            holdout_embeddings=gate_holdout.embeddings,
+            holdout_labels=gate_holdout.labels,
+        )
+        checkpoint["fallback"] = fallback.state_dict()
+        torch.save(checkpoint, checkpoint_path)  # re-save with fallback embedded
+        predictor.fallback = fallback
+        logger.info(
+            "Uncertainty-aware fallback fitted and saved "
+            "(entropy_high=%.3f entropy_abstain=%.3f ood_abstain=%.3f).",
+            fallback.config.entropy_high, fallback.config.entropy_abstain,
+            fallback.config.ood_abstain,
+        )
+
+    # 6. Final evaluation + artifact export on the untouched test split -----
     evaluate_and_export(
         predictor,
         test_split=splits["test"],

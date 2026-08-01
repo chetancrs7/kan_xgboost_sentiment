@@ -68,6 +68,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--test-size", type=int, default=2000)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument(
+        "--splits-dir",
+        type=Path,
+        default=SPLITS_DIR,
+        help="Directory holding {train,val,test}.csv to subsample from.",
+    )
+    parser.add_argument(
+        "--xgb-probs-dir",
+        type=Path,
+        default=XGB_PROBS_DIR,
+        help="Directory holding full-split {train,val,test}_probs.npy to slice.",
+    )
     parser.add_argument("--batch-size", type=int, default=32, help="Embedding batch size.")
     parser.add_argument("--max-length", type=int, default=128, help="Embedding max tokens.")
     parser.add_argument("--device", default=None, help="Force 'cpu'/'cuda' for embedding.")
@@ -111,6 +123,8 @@ def main() -> None:
     args = parse_args()
     sizes = {"train": args.train_size, "val": args.val_size, "test": args.test_size}
 
+    splits_dir = args.splits_dir
+    xgb_probs_dir = args.xgb_probs_dir
     out = args.output_dir
     for sub in ("indices", "splits", "embeddings", "xgboost"):
         (out / sub).mkdir(parents=True, exist_ok=True)
@@ -131,14 +145,14 @@ def main() -> None:
         "seed": args.seed,
         "text_column": TEXT_COLUMN,
         "sizes": {},
-        "source_splits_dir": str(SPLITS_DIR),
-        "source_xgb_probs_dir": str(XGB_PROBS_DIR),
+        "source_splits_dir": str(splits_dir),
+        "source_xgb_probs_dir": str(xgb_probs_dir),
     }
 
     for split in SPLITS:
-        csv_path = SPLITS_DIR / f"{split}.csv"
+        csv_path = splits_dir / f"{split}.csv"
         df = pd.read_csv(csv_path)
-        probs = np.load(XGB_PROBS_DIR / f"{split}_probs.npy")
+        probs = np.load(xgb_probs_dir / f"{split}_probs.npy")
         if len(probs) != len(df):
             sys.exit(
                 f"[ERROR] {split}: XGBoost probs ({len(probs)}) and split CSV "

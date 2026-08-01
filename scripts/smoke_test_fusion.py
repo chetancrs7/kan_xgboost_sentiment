@@ -21,6 +21,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src.fusion.fallback import FallbackConfig, UncertaintyFallback
 from src.fusion.fusion_dataset import FusionFeatureBuilder, StandardScaler, make_dataloader
 from src.fusion.fusion_model import FusionGate, fused_cross_entropy
 from src.fusion.predictor import FusionPredictor, evaluate_and_export
@@ -58,7 +59,7 @@ def main() -> None:
     rng = np.random.default_rng(7)
 
     builder = FusionFeatureBuilder(n_residual_bins=5)
-    train_df, _, kan_tr, xgb_tr = make_fake_split(400, rng)
+    train_df, train_emb, kan_tr, xgb_tr = make_fake_split(400, rng)
     builder.fit_residuals(kan_tr, xgb_tr, train_df["label"].to_numpy())
 
     val_df, val_emb, kan_val, xgb_val = make_fake_split(300, rng)
@@ -110,6 +111,23 @@ def main() -> None:
         torch.save(checkpoint, ckpt_path)
 
         predictor = FusionPredictor.from_checkpoint(ckpt_path, device="cpu")
+
+        # Fit + attach the uncertainty-aware fallback, mirroring the trainer.
+        holdout_outputs = predictor.predict(gate_holdout)
+        fallback = UncertaintyFallback(FallbackConfig())
+        fallback.fit(
+            train_embeddings=train_emb,
+            holdout_fused_probs=holdout_outputs.fused_probs,
+            holdout_kan_probs=gate_holdout.kan_probs,
+            holdout_xgb_probs=gate_holdout.xgb_probs,
+            holdout_embeddings=gate_holdout.embeddings,
+            holdout_labels=gate_holdout.labels,
+        )
+        predictor.fallback = fallback
+        print("[OK] fallback fitted "
+              f"(entropy_abstain={fallback.config.entropy_abstain:.3f}, "
+              f"ood_abstain={fallback.config.ood_abstain:.3f})")
+
         rebuilt = predictor.builder_from_checkpoint()
         test_split_rebuilt = rebuilt.build("test", test_df, test_emb, kan_te, xgb_te)
         metrics = evaluate_and_export(
@@ -121,11 +139,18 @@ def main() -> None:
             "fusion_metrics.json", "fusion_predictions.csv", "fusion_probabilities.npy",
             "plots/alpha_distribution.png", "plots/calibration_curve.png",
             "plots/confusion_matrix.png", "plots/reliability_diagram.png",
+            "plots/fallback_actions.png",
         }
         missing = expected - set(produced)
         assert not missing, f"missing artifacts: {missing}"
+        assert "fallback" in metrics, "fallback metrics missing from report"
+        pred_cols = pd.read_csv(tmp / "out" / "fusion_predictions.csv").columns
+        assert "fallback_action" in pred_cols, "fallback_action column missing"
         acc = metrics["test"]["fusion_accuracy"]
+        fb = metrics["fallback"]
         print(f"[OK] fusion test accuracy on synthetic data: {acc:.3f}")
+        print(f"[OK] fallback: coverage={fb['coverage']:.3f} "
+              f"review_rate={fb['review_rate']:.3f} actions={fb['action_counts']}")
 
     print("\n[PASS] fusion package smoke test complete.")
 
