@@ -62,14 +62,22 @@ MAX_GRADIENT_SAMPLES = 128
 
 
 def iter_kan_layers(model) -> Iterator[tuple[str, torch.nn.Module, torch.nn.Module]]:
-    """Yield ``(name, wrapper, pykan_layer)`` for each of the four KAN layers.
+    """Yield ``(name, wrapper, pykan_layer)`` for each **B-spline** KAN layer.
 
     ``wrapper`` is the project's ``AdaptiveSplineKANLayer``; ``pykan_layer``
     is the underlying ``kan.KANLayer`` holding ``grid`` / ``coef`` / scales.
+
+    Only the B-spline layers expose a ``kan_layer`` and the pykan-specific
+    internals (``grid``, ``coef``, ``scale_sp``, ``B_batch``/``coef2curve``)
+    this module reads, so the radial layers (thin-plate / RBF, see
+    ``src/models/kan/layers.py``) are **skipped** -- these B-spline figures do
+    not apply to them. Because the B-spline layers are the first stages in the
+    stack, the yield order still matches their layer index.
     """
     for name in LAYER_NAMES:
         wrapper = getattr(model, name)
-        yield name, wrapper, wrapper.kan_layer
+        if hasattr(wrapper, "kan_layer"):
+            yield name, wrapper, wrapper.kan_layer
 
 
 # ---------------------------------------------------------------------------

@@ -20,6 +20,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from src.baselines.knn.evaluate import evaluate  # noqa: E402
+from src.baselines.metrics_io import save_metrics  # noqa: E402
 from src.baselines.knn.model import (  # noqa: E402
     K_VALUES,
     MAX_FEATURES,
@@ -182,13 +183,21 @@ def main(args: argparse.Namespace | None = None) -> None:
     vocab_size = len(model.named_steps["tfidf"].vocabulary_)
     print(f"[INFO] Vocabulary size: {vocab_size:,} terms.")
 
-    evaluate(model, X_test, y_test)
+    results = evaluate(model, X_test, y_test)
     # The Hydra entry point may not supply --plots-dir; fall back to default.
+    plots_dir = getattr(args, "plots_dir", DEFAULT_PLOTS_DIR)
+    # metrics.json sits next to the plots/ folder, e.g. models/baselines/knn/.
+    save_metrics(
+        results,
+        Path(plots_dir).parent,
+        n_test_samples=len(y_test),
+        best_params=best_params,
+    )
     generate_plots(
         model,
         X_test,
         y_test,
-        getattr(args, "plots_dir", DEFAULT_PLOTS_DIR),
+        plots_dir,
         tuning_history=tuning_history,
     )
 

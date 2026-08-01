@@ -1,0 +1,43 @@
+# Named embedding-method presets for `src/embeddings/generate_embeddings.py`.
+#
+# Pick one on the CLI with `--method <name>`, e.g.:
+#     python src/embeddings/generate_embeddings.py --method bertweet \
+#         --data-dir data/splitsfull --output-dir data/embeddings_bertweet
+#
+# A preset just fills in default model_name / pooling / text_column /
+# tokenizer_kwargs so you don't have to spell them out. Any explicit CLI flag
+# (--model-name, --pooling, --text-column) still overrides the preset.
+#
+# This file is OPTIONAL: if it's missing or malformed, the built-in presets in
+# src/embeddings/config.py are used instead, so embedding generation never
+# breaks. Add your own methods here without touching code.
+
+methods:
+  # Existing DeBERTa-v3 path — identical to the prior default behaviour.
+  deberta:
+    model_name: microsoft/deberta-v3-base
+    pooling: mean            # mean | cls | pooler
+    text_column: clean_text
+
+  # BERTweet: RoBERTa pretrained on ~850M English tweets (domain-matched).
+  # Reads the RAW `text` column — it has its own tweet-aware tokenizer.
+  bertweet:
+    model_name: vinai/bertweet-base
+    # Always load the tokenizer from the hub base — BERTweet's slow tokenizer is
+    # broken when reloaded from a fine-tuned save dir (loses BPE merges), so a
+    # fine-tuned BERTweet model must pair with this base tokenizer.
+    tokenizer_name: vinai/bertweet-base
+    pooling: mean
+    text_column: text
+    tokenizer_kwargs:
+      use_fast: false        # BERTweet ships a slow tokenizer
+
+  # Larger BERTweet variant (1024-dim embeddings). Downstream KAN input_dim is
+  # read from the embeddings automatically, so no other change is needed.
+  bertweet-large:
+    model_name: vinai/bertweet-large
+    tokenizer_name: vinai/bertweet-large
+    pooling: mean
+    text_column: text
+    tokenizer_kwargs:
+      use_fast: false

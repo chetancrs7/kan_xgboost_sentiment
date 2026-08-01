@@ -3,10 +3,12 @@
 The four layers below are chained in a fixed sequence -- no extra linear
 projections, normalisation, or dropout layers are inserted between them, so
 the architecture matches exactly the four named stages this model is built
-around:
+around, each using the spline family suited to its role:
 
-    embedding -> SemanticCompressionLayer -> ContextInteractionLayer
-              -> SentimentDistortionLayer -> EmotionHotspotLayer -> logits
+    embedding -> SemanticCompressionLayer  (B-spline)
+              -> ContextInteractionLayer   (B-spline)
+              -> SentimentDistortionLayer  (thin-plate spline)
+              -> EmotionHotspotLayer       (Gaussian RBF spline) -> logits
 """
 
 from __future__ import annotations
@@ -40,9 +42,20 @@ class KANSentimentClassifier(nn.Module):
         hidden_dims: Output widths of layers 1-3, i.e.
             ``(semantic_dim, context_dim, distortion_dim)``.
         n_classes: Number of sentiment classes (final layer's output width).
-        grid_size: B-spline grid interval count, shared by all four layers.
-        spline_order: B-spline polynomial degree, shared by all four layers.
-        grid_range: Initial spline grid range before adaptive refitting.
+        grid_size: Grid resolution shared by all four layers -- B-spline
+            interval count for layers 1-2 and radial-centre count for the
+            thin-plate / RBF layers 3-4.
+        spline_order: B-spline polynomial degree for layers 1-2 (ignored by
+            the radial layers 3-4, which have no polynomial order).
+        grid_range: Initial spline/centre grid range before adaptive refitting.
+        aux_failure_head: When ``True``, attach a small auxiliary MLP that
+            predicts the probability the XGBoost structural expert *fails* on a
+            sample, using only the DeBERTa semantic representation (the layer
+            input). It is an interpretable competence signal for the fusion
+            gate and never alters the sentiment ``forward`` output. Default
+            ``False`` keeps the module byte-identical to the original — no extra
+            parameters, so existing checkpoints load unchanged.
+        aux_hidden: Hidden width of the auxiliary head (only when enabled).
     """
 
     def __init__(
@@ -53,6 +66,8 @@ class KANSentimentClassifier(nn.Module):
         grid_size: int = 5,
         spline_order: int = 3,
         grid_range: tuple[float, float] = (-2.0, 2.0),
+        aux_failure_head: bool = False,
+        aux_hidden: int = 64,
     ) -> None:
         super().__init__()
         semantic_dim, context_dim, distortion_dim = hidden_dims
@@ -77,13 +92,42 @@ class KANSentimentClassifier(nn.Module):
             self.emotion_hotspot,
         )
 
+        # Optional auxiliary "XGBoost competence" head. Kept OUT of ``self.layers``
+        # so grid adaptation/refinement/spline-visualisation ignore it, and only
+        # instantiated when requested so the default model's state_dict is
+        # unchanged (backward-compatible checkpoints).
+        self.aux_failure_head = bool(aux_failure_head)
+        self.aux_head: nn.Module | None = None
+        if self.aux_failure_head:
+            self.aux_head = nn.Sequential(
+                nn.Linear(input_dim, aux_hidden),
+                nn.GELU(),
+                nn.Linear(aux_hidden, 1),
+            )
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run the four KAN layers in sequence and return class logits."""
+        """Run the four KAN layers in sequence and return class logits.
+
+        The auxiliary competence head (if any) is intentionally *not* invoked
+        here, so every existing caller keeps receiving class logits only. Use
+        :meth:`aux_failure_logit` to read the competence signal.
+        """
         x = self.semantic_compression(x)
         x = self.context_interaction(x)
         x = self.sentiment_distortion(x)
         logits = self.emotion_hotspot(x)
         return logits
+
+    def aux_failure_logit(self, x: torch.Tensor) -> torch.Tensor | None:
+        """Predict the XGBoost-failure logit from the semantic embedding ``x``.
+
+        Returns a ``[batch]`` logit tensor when the auxiliary head is enabled,
+        else ``None``. ``torch.sigmoid`` of this logit is the estimated
+        probability that the structural expert misclassifies the sample.
+        """
+        if self.aux_head is None:
+            return None
+        return self.aux_head(x).squeeze(-1)
 
     @torch.no_grad()
     def update_grids(self, x: torch.Tensor) -> None:
@@ -103,3 +147,33 @@ class KANSentimentClassifier(nn.Module):
             current = layer(current)
         if was_training:
             self.train()
+
+    @torch.no_grad()
+    def refine_grids(self, new_grid_size: int, x: torch.Tensor) -> int:
+        """Grow every layer's spline resolution to ``new_grid_size``.
+
+        Propagates ``x`` so each layer is refined on the activations it
+        actually receives, then adapts the (now finer) grids to the data
+        quantiles. This is "spline complexity increases in high-density
+        regions" made literal: the extra knots/centres are both *added* and
+        *placed* where the data concentrates. Because refinement replaces
+        parameters, callers must rebuild the optimiser afterwards (see
+        ``train.py``).
+
+        Each layer's ``refine`` is self-guarding: a layer that would produce
+        non-finite weights keeps its current grid instead. Returns the number
+        of layers that were actually refined (0 means the model is unchanged).
+        """
+        was_training = self.training
+        self.eval()
+        current = x
+        refined = 0
+        for layer in self.layers:
+            if layer.refine(new_grid_size, current):
+                refined += 1
+            current = layer(current)
+        # Re-place the freshly added knots/centres at the data quantiles.
+        self.update_grids(x)
+        if was_training:
+            self.train()
+        return refined

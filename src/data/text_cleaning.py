@@ -18,7 +18,22 @@ LABEL_MAP = {0: 0, 4: 1}
 MENTION_RE = re.compile(r"@\w+")
 HASHTAG_RE = re.compile(r"#(\w+)")
 REPEAT_CHAR_RE = re.compile(r"(.)\1{2,}")
-TOKEN_RE = re.compile(r"[a-z0-9_<>']+|[!?]+")
+# Unicode ranges covering the common emoji blocks (pictographs, dingbats,
+# regional indicators, arrows/stars, variation selectors). Kept as its own
+# character class so emoji survive tokenisation instead of being stripped.
+_EMOJI_CHARS = (
+    "\U0001F300-\U0001FAFF"  # symbols, pictographs, emoji extensions
+    "\U00002600-\U000027BF"  # misc symbols + dingbats
+    "\U0001F1E6-\U0001F1FF"  # regional indicators
+    "\U00002B00-\U00002BFF"  # arrows / stars
+    "\U0000FE00-\U0000FE0F"  # variation selectors
+    "\U00002190-\U000021FF"  # arrows
+)
+# Emoji are preserved as individual tokens: sentiment-bearing pictographs
+# carry polarity the transformer encoder can use, so — unlike punctuation —
+# they should NOT be discarded by cleaning. (Sentiment140 is a 2009 latin-1
+# corpus with almost no unicode emoji, so this mostly benefits modern data.)
+TOKEN_RE = re.compile(rf"[a-z0-9_<>']+|[!?]+|[{_EMOJI_CHARS}]", flags=re.UNICODE)
 
 url_extractor = URLExtract()
 

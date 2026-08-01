@@ -33,20 +33,63 @@ class EmbeddingGenerator:
 
         self._torch = torch
         self.config = config
+        self.pooling = config.pooling
 
         set_seed(config.seed)
         self.device = torch.device(self._resolve_device(config.device))
 
-        logger.info("Loading tokenizer and model '%s' ...", config.model_name)
-        self.tokenizer = AutoTokenizer.from_pretrained(config.model_name)
-        self.model = AutoModel.from_pretrained(config.model_name)
+        logger.info(
+            "Loading tokenizer and model '%s' (pooling=%s) ...",
+            config.model_name, self.pooling,
+        )
+        # Tokenizer may come from a different source than the model weights
+        # (e.g. BERTweet's saved tokenizer is broken on reload — see config).
+        tokenizer_src = config.tokenizer_name or config.model_name
+        if config.tokenizer_name and config.tokenizer_name != config.model_name:
+            logger.info("Loading tokenizer from '%s' (model from '%s').",
+                        tokenizer_src, config.model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            tokenizer_src, **(config.tokenizer_kwargs or {})
+        )
+
+        # "pooler" needs the fine-tuned ContextPooler (sits on top of the base
+        # encoder in a sequence-classification checkpoint). "mean"/"cls" only
+        # need the bare encoder.
+        self._pooler = None
+        if self.pooling == "pooler":
+            from transformers import AutoModelForSequenceClassification
+
+            seq_model = AutoModelForSequenceClassification.from_pretrained(config.model_name)
+            self._pooler = getattr(seq_model, "pooler", None)
+            self.model = seq_model.base_model
+            if self._pooler is None:
+                logger.warning(
+                    "Model '%s' has no pooler head; falling back to CLS pooling. "
+                    "(The 'pooler' strategy needs a fine-tuned sequence-"
+                    "classification checkpoint.)",
+                    config.model_name,
+                )
+                self.pooling = "cls"
+            else:
+                self._pooler.to(self.device).eval()
+        else:
+            self.model = AutoModel.from_pretrained(config.model_name)
+
         self.model.to(self.device)
         self.model.eval()  # Disable dropout for deterministic inference.
 
-        self.embedding_dim: int = self.model.config.hidden_size
+        # The pooled dimension equals the encoder hidden size for mean/cls; for
+        # the ContextPooler it is the pooler's output_dim (usually identical).
+        if self._pooler is not None:
+            self.embedding_dim = int(
+                getattr(self._pooler, "output_dim", self.model.config.hidden_size)
+            )
+        else:
+            self.embedding_dim = int(self.model.config.hidden_size)
         logger.info(
-            "Model ready on %s | embedding_dim=%d | max_length=%d | batch_size=%d",
+            "Model ready on %s | pooling=%s | embedding_dim=%d | max_length=%d | batch_size=%d",
             self.device,
+            self.pooling,
             self.embedding_dim,
             config.max_length,
             config.batch_size,
@@ -72,6 +115,24 @@ class EmbeddingGenerator:
         summed = (last_hidden_state * mask).sum(dim=1)
         counts = mask.sum(dim=1).clamp(min=1e-9)  # Guard against empty masks.
         return summed / counts
+
+    def _pool(
+        self,
+        last_hidden_state: "torch.Tensor",
+        attention_mask: "torch.Tensor",
+    ) -> "torch.Tensor":
+        """Reduce token vectors to one sentence vector per the chosen strategy."""
+        if self.pooling == "mean":
+            return self._mean_pool(last_hidden_state, attention_mask)
+        if self.pooling == "cls":
+            # First-token ([CLS]) last-hidden vector — the token DeBERTa's
+            # sequence-classification head reads from.
+            return last_hidden_state[:, 0]
+        if self.pooling == "pooler":
+            # ContextPooler consumes the full sequence and internally selects
+            # the first token, then applies its trained dense + activation.
+            return self._pooler(last_hidden_state)
+        raise ValueError(f"Unknown pooling strategy '{self.pooling}'.")
 
     def generate(
         self,
@@ -107,7 +168,7 @@ class EmbeddingGenerator:
                 ).to(self.device)
 
                 outputs = self.model(**encoded)
-                pooled = self._mean_pool(
+                pooled = self._pool(
                     outputs.last_hidden_state,
                     encoded["attention_mask"],
                 )

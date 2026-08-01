@@ -236,13 +236,14 @@ def _fit(
     x_val: ArrayLike,
     y_val: ArrayLike,
     epochs: int,
+    batch_size: int = BATCH_SIZE,
 ) -> Model:
     """Fit a model with early stopping against an explicit validation split."""
     model.fit(
         x_train,
         y_train,
         validation_data=(x_val, y_val),
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         epochs=epochs,
         callbacks=build_callbacks(),
         class_weight=class_weights(y_train),
@@ -260,12 +261,28 @@ def tune_model(
     vocab_size: int = VOCAB_SIZE,
     max_length: int = MAX_LENGTH,
     candidates: list[BiLSTMCNNParams] | None = None,
+    batch_size: int = BATCH_SIZE,
+    tune_sample: int | None = None,
 ) -> BiLSTMCNNParams:
-    """Grid-search architecture params on the validation split (macro-F1)."""
+    """Grid-search architecture params on the validation split (macro-F1).
+
+    ``tune_sample`` limits candidate fits to a random subset of the training
+    rows (stratification is not required for a rough ranking), which keeps the
+    grid search cheap on very large corpora. The selected configuration is
+    still trained on the full training split by ``train_final_model``.
+    """
     candidates = candidates if candidates is not None else param_candidates()
     if len(candidates) == 1:
         print(f"[INFO] Single candidate; skipping tuning: {candidates[0]}")
         return candidates[0]
+
+    if tune_sample is not None and tune_sample < len(x_train):
+        rng = np.random.default_rng(RANDOM_STATE)
+        idx = rng.choice(len(x_train), size=tune_sample, replace=False)
+        x_tune, y_tune = x_train[idx], y_train[idx]
+        print(f"[INFO] Tuning on a {tune_sample:,}-row subsample of the training split.")
+    else:
+        x_tune, y_tune = x_train, y_train
 
     print(
         f"[INFO] Tuning BiLSTM-CNN on validation split "
@@ -283,7 +300,7 @@ def tune_model(
             vocab_size=vocab_size,
             max_length=max_length,
         )
-        _fit(model, x_train, y_train, x_val, y_val, epochs=TUNING_EPOCHS)
+        _fit(model, x_tune, y_tune, x_val, y_val, epochs=TUNING_EPOCHS, batch_size=batch_size)
         y_pred = np.argmax(model.predict(x_val, verbose=0), axis=1)
         score = f1_score(y_val, y_pred, average="macro", zero_division=0)
         print(f"[INFO]   {params} -> val macro-F1={score:.4f}")
@@ -308,11 +325,12 @@ def train_final_model(
     vocab_size: int = VOCAB_SIZE,
     max_length: int = MAX_LENGTH,
     epochs: int = EPOCHS,
+    batch_size: int = BATCH_SIZE,
 ) -> Model:
     """Train the selected configuration to convergence on the training split."""
     print(
         f"[INFO] Fitting final model on {len(x_train):,} samples "
-        f"(validation={len(x_val):,}, epochs={epochs}) ..."
+        f"(validation={len(x_val):,}, epochs={epochs}, batch_size={batch_size}) ..."
     )
     model = build_model(
         best_params,
@@ -320,6 +338,6 @@ def train_final_model(
         vocab_size=vocab_size,
         max_length=max_length,
     )
-    _fit(model, x_train, y_train, x_val, y_val, epochs=epochs)
+    _fit(model, x_train, y_train, x_val, y_val, epochs=epochs, batch_size=batch_size)
     print("[INFO] Training complete.")
     return model
