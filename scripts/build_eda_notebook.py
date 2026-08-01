@@ -1,4 +1,4 @@
-"""Assemble the detailed Sentiment140 EDA notebook (notebooks/EDA_Sentiment140.ipynb).
+"""Assemble the detailed Sentiment140 EDA notebook (eda/notebooks/EDA_Sentiment140.ipynb).
 
 Run: python scripts/build_eda_notebook.py
 """
@@ -405,6 +405,6 @@ md(r"""## 13. Findings & modelling implications (§3.3.6)
 nb["cells"] = cells
 nb["metadata"] = {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
                   "language_info": {"name": "python"}}
-out = Path("notebooks/EDA_Sentiment140.ipynb")
+out = Path("eda/notebooks/EDA_Sentiment140.ipynb")
 nbf.write(nb, out)
 print("wrote", out, "with", len(cells), "cells")
