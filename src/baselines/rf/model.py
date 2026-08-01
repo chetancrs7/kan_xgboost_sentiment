@@ -33,8 +33,10 @@ N_JOBS: int = -1                       # cores used to grow trees (-1 = all)
 MAX_FEATURES_SPLIT: str = "sqrt"       # features considered per split
 
 # Tuned Random Forest hyperparameters (grid searched on the validation split).
+# max_depth is capped (no unbounded `None`): fully grown trees on the 1.28M-row
+# split are the dominant time/memory cost for a negligible macro-F1 difference.
 N_ESTIMATORS_VALUES: tuple[int, ...] = (200, 400)
-MAX_DEPTH_VALUES: tuple[int | None, ...] = (None, 50)
+MAX_DEPTH_VALUES: tuple[int | None, ...] = (50,)
 MIN_SAMPLES_LEAF_VALUES: tuple[int, ...] = (1, 2)
 
 

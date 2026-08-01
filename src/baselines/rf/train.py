@@ -21,6 +21,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from src.baselines.rf.evaluate import evaluate  # noqa: E402
+from src.baselines.metrics_io import save_metrics  # noqa: E402
 from src.baselines.rf.model import (  # noqa: E402
     MAX_FEATURES,
     RANDOM_STATE,
@@ -168,7 +169,13 @@ def main(args: argparse.Namespace | None = None) -> None:
     vocab_size = len(model.named_steps["tfidf"].vocabulary_)
     print(f"[INFO] Vocabulary size: {vocab_size:,} terms.")
 
-    evaluate(model, test_df[TEXT_COLUMN], test_df[LABEL_COLUMN])
+    results = evaluate(model, test_df[TEXT_COLUMN], test_df[LABEL_COLUMN])
+    save_metrics(
+        results,
+        args.save_dir,
+        n_test_samples=len(test_df),
+        best_params=best_params,
+    )
     save_artifacts(model, args.save_dir)
     generate_plots(
         model,

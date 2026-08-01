@@ -18,16 +18,27 @@ import pandas as pd
 from evaluate import evaluate
 from visualize import generate_plots
 from model import (
+    BATCH_SIZE,
+    DENSE_UNITS,
+    EMBEDDING_DIM,
     EPOCHS,
+    FILTERS,
+    KERNEL_SIZE,
     MAX_LENGTH,
     RANDOM_STATE,
     VOCAB_SIZE,
+    BiLSTMCNNParams,
     fit_tokenizer,
     set_reproducibility,
     train_final_model,
     tune_model,
     vectorize_texts,
 )
+
+# Put src/baselines/ on the path so the shared metrics helper imports like the
+# sibling `evaluate`/`model`/`visualize` modules above.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from metrics_io import save_metrics  # noqa: E402
 
 DEFAULT_TRAIN_PATH = "data/splits/train.csv"
 DEFAULT_VAL_PATH = "data/splits/val.csv"
@@ -144,6 +155,42 @@ def parse_args() -> argparse.Namespace:
         help="Epochs for final model training (default: %(default)s).",
     )
     parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=BATCH_SIZE,
+        help="Training batch size; larger is faster on CPU (default: %(default)s).",
+    )
+    parser.add_argument(
+        "--tune-sample",
+        type=int,
+        default=None,
+        help=(
+            "Run the tuning grid on a random subsample of this many training "
+            "rows (the final model still trains on the full split). Speeds up "
+            "tuning on large corpora (default: use all rows)."
+        ),
+    )
+    parser.add_argument(
+        "--no-tune",
+        action="store_true",
+        help=(
+            "Skip the grid search and train a single fixed configuration set by "
+            "--lstm-units and --dropout."
+        ),
+    )
+    parser.add_argument(
+        "--lstm-units",
+        type=int,
+        default=128,
+        help="LSTM units for the fixed config used with --no-tune (default: %(default)s).",
+    )
+    parser.add_argument(
+        "--dropout",
+        type=float,
+        default=0.3,
+        help="Dropout rate for the fixed config used with --no-tune (default: %(default)s).",
+    )
+    parser.add_argument(
         "--save-dir",
         default=DEFAULT_SAVE_DIR,
         help="Directory for the trained model and tokenizer (default: %(default)s).",
@@ -178,15 +225,28 @@ def main(args: argparse.Namespace | None = None) -> None:
     y_val = val_df[LABEL_COLUMN].to_numpy()
     y_test = test_df[LABEL_COLUMN].to_numpy()
 
-    best_params = tune_model(
-        x_train=x_train,
-        y_train=y_train,
-        x_val=x_val,
-        y_val=y_val,
-        num_classes=num_classes,
-        vocab_size=args.vocab_size,
-        max_length=args.max_length,
-    )
+    if args.no_tune:
+        best_params = BiLSTMCNNParams(
+            embedding_dim=EMBEDDING_DIM,
+            lstm_units=args.lstm_units,
+            filters=FILTERS,
+            kernel_size=KERNEL_SIZE,
+            dense_units=DENSE_UNITS,
+            dropout_rate=args.dropout,
+        )
+        print(f"[INFO] --no-tune: using fixed configuration {best_params}")
+    else:
+        best_params = tune_model(
+            x_train=x_train,
+            y_train=y_train,
+            x_val=x_val,
+            y_val=y_val,
+            num_classes=num_classes,
+            vocab_size=args.vocab_size,
+            max_length=args.max_length,
+            batch_size=args.batch_size,
+            tune_sample=args.tune_sample,
+        )
 
     model = train_final_model(
         x_train=x_train,
@@ -198,9 +258,16 @@ def main(args: argparse.Namespace | None = None) -> None:
         vocab_size=args.vocab_size,
         max_length=args.max_length,
         epochs=args.epochs,
+        batch_size=args.batch_size,
     )
 
-    evaluate(model, x_test, y_test)
+    results = evaluate(model, x_test, y_test)
+    save_metrics(
+        results,
+        args.save_dir,
+        n_test_samples=len(y_test),
+        best_params=best_params,
+    )
     save_artifacts(model, tokenizer, args.save_dir)
 
     # Keras attaches the final fit's History callback to the model.
