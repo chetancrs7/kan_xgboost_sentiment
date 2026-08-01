@@ -28,3 +28,4 @@ tqdm
 pykan
 hydra-core
 omegaconf
+shap  # SHAP explainability for the XGBoost expert and the fusion gate

@@ -10,3 +10,7 @@ data/embeddings/
 # Hydra run directories (per-run logs + config snapshots)
 outputs/
 multirun/
+
+# Trained model weights and generated data artifacts (reproducible, too large for git)
+/models/
+/data/
