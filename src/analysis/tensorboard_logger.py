@@ -64,9 +64,7 @@ class SplineTensorBoardLogger:
         self.enabled = False
         self._writer = None
 
-    # ------------------------------------------------------------------
     # Public logging API (all failure-proof)
-    # ------------------------------------------------------------------
 
     def log_epoch_metrics(self, epoch: int, metrics: dict[str, float]) -> None:
         """Log scalar training metrics (loss/accuracy) under ``kan/<name>``."""

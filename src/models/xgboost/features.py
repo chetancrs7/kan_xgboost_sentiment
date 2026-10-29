@@ -69,9 +69,7 @@ except Exception:  # pragma: no cover - emot optional at runtime
     _EMOT = None
 
 
-# ---------------------------------------------------------------------------
 # Lexicons
-# ---------------------------------------------------------------------------
 NEGATION_WORDS: frozenset[str] = frozenset(
     {
         "no", "not", "none", "never", "neither", "nor", "nobody", "nothing",
