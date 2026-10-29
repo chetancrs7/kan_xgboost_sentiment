@@ -94,9 +94,7 @@ def _grid_of_axes(n: int, ncols: int = 2, panel: tuple[float, float] = (3.4, 2.4
     return fig, flat[:n]
 
 
-# ---------------------------------------------------------------------------
 # 1. Knot grid
-# ---------------------------------------------------------------------------
 
 def plot_knot_grid(kan_layer, layer_title: str, dims: list[int], path: Path) -> Path:
     """Knot positions of selected input dimensions (one row per dimension).
@@ -127,9 +125,7 @@ def plot_knot_grid(kan_layer, layer_title: str, dims: list[int], path: Path) -> 
     return _save(fig, path)
 
 
-# ---------------------------------------------------------------------------
 # 2. Basis functions
-# ---------------------------------------------------------------------------
 
 def plot_basis_functions(kan_layer, layer_title: str, in_index: int, path: Path) -> Path:
     """The B-spline basis of one input dimension, with knots marked.
@@ -158,9 +154,7 @@ def plot_basis_functions(kan_layer, layer_title: str, in_index: int, path: Path)
     return _save(fig, path)
 
 
-# ---------------------------------------------------------------------------
 # 3. Learned edge functions (spline transformation curves)
-# ---------------------------------------------------------------------------
 
 def edge_curves_figure(kan_layer, layer_title: str, edges: list[tuple[int, int]]):
     """Build (but do not save) a small-multiples figure of learned edge functions.
@@ -202,9 +196,7 @@ def plot_spline_curves(
     return _save(fig, path)
 
 
-# ---------------------------------------------------------------------------
 # 4. Coefficient heatmap
-# ---------------------------------------------------------------------------
 
 def plot_coefficient_heatmap(
     kan_layer, layer_title: str, path: Path, max_rows: int = 32, max_cols: int = 32
@@ -241,9 +233,7 @@ def plot_coefficient_heatmap(
     return _save(fig, path)
 
 
-# ---------------------------------------------------------------------------
 # 5. Before vs. after training
-# ---------------------------------------------------------------------------
 
 def plot_before_after(
     kan_layer_before,
@@ -277,9 +267,7 @@ def plot_before_after(
     return _save(fig, path)
 
 
-# ---------------------------------------------------------------------------
 # 6. Input feature response curves (end-to-end)
-# ---------------------------------------------------------------------------
 
 def plot_feature_response(
     model,
@@ -340,9 +328,7 @@ def plot_feature_response(
     return _save(fig, path)
 
 
-# ---------------------------------------------------------------------------
 # 7. Layer-wise comparison
-# ---------------------------------------------------------------------------
 
 def plot_layer_comparison(model, path: Path, edges_per_layer: int = 3) -> Path:
     """Strongest learned edge functions of all four layers, side by side.
@@ -372,9 +358,7 @@ def plot_layer_comparison(model, path: Path, edges_per_layer: int = 3) -> Path:
     return _save(fig, path)
 
 
-# ---------------------------------------------------------------------------
 # Orchestrator
-# ---------------------------------------------------------------------------
 
 def generate_all_visualizations(
     model,

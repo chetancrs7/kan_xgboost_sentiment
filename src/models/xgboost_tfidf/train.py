@@ -53,9 +53,7 @@ from sklearn.metrics import (
 )
 from xgboost import XGBClassifier
 
-# ---------------------------------------------------------------------------
 # Defaults
-# ---------------------------------------------------------------------------
 DEFAULT_TRAIN_PATH = "data/splits/train.csv"
 DEFAULT_VAL_PATH = "data/splits/val.csv"
 DEFAULT_TEST_PATH = "data/splits/test.csv"
@@ -67,9 +65,7 @@ LABEL_COLUMN = "label"
 RANDOM_STATE = 42
 
 
-# ---------------------------------------------------------------------------
 # Data loading (inlined so this package has no internal dependencies)
-# ---------------------------------------------------------------------------
 def load_split(path: str, name: str) -> tuple[pd.Series, np.ndarray]:
     """Return ``(text, label)`` for one split CSV."""
     p = Path(path)
@@ -95,9 +91,7 @@ def load_split(path: str, name: str) -> tuple[pd.Series, np.ndarray]:
     return text, labels
 
 
-# ---------------------------------------------------------------------------
 # Feature engineering: TF-IDF word + character n-grams
-# ---------------------------------------------------------------------------
 def build_vectorizers(
     word_features: int, char_features: int
 ) -> tuple[TfidfVectorizer, TfidfVectorizer]:
@@ -150,9 +144,7 @@ def vectorize(
     return X_train, X_val, X_test
 
 
-# ---------------------------------------------------------------------------
 # Model
-# ---------------------------------------------------------------------------
 def build_model(
     n_estimators: int,
     eval_metric: str | list[str] = "logloss",
@@ -251,9 +243,7 @@ def evaluate(model: XGBClassifier, X, y, split: str) -> dict:
     return metrics
 
 
-# ---------------------------------------------------------------------------
 # Entry point
-# ---------------------------------------------------------------------------
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--train-path", default=DEFAULT_TRAIN_PATH)

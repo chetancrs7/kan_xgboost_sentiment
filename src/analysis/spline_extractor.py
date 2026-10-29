@@ -80,9 +80,7 @@ def iter_kan_layers(model) -> Iterator[tuple[str, torch.nn.Module, torch.nn.Modu
             yield name, wrapper, wrapper.kan_layer
 
 
-# ---------------------------------------------------------------------------
 # Static components: knots, coefficients, edge strengths
-# ---------------------------------------------------------------------------
 
 def extended_knots(kan_layer) -> np.ndarray:
     """Full extended knot grid, shape ``(in_dim, G + 2k + 1)``.
@@ -132,9 +130,7 @@ def top_edges(kan_layer, k: int = 6) -> list[tuple[int, int]]:
     return [tuple(int(v) for v in np.unravel_index(i, strengths.shape)) for i in flat]
 
 
-# ---------------------------------------------------------------------------
 # Function evaluation: basis functions and learned edge curves
-# ---------------------------------------------------------------------------
 
 def _dim_range(kan_layer, in_index: int) -> tuple[float, float]:
     """Interior knot range of one input dimension (where the splines live)."""
@@ -216,9 +212,7 @@ def edge_curve(kan_layer, in_index: int, out_index: int, n_points: int = 256) ->
     )
 
 
-# ---------------------------------------------------------------------------
 # Data-dependent components: forward activations and importance measures
-# ---------------------------------------------------------------------------
 
 @torch.no_grad()
 def forward_capture(model, x: torch.Tensor) -> dict[str, list[torch.Tensor] | torch.Tensor]:
